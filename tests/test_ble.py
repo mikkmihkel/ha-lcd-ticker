@@ -243,3 +243,41 @@ async def test_address_masked_in_error(hass):
     assert ADDR.lower() not in str(exc_info.value)
     # But the placeholder should be there
     assert "<address>" in str(exc_info.value)
+
+
+def test_mask_address_covers_all_forms():
+    from custom_components.lcd_ticker.ble import mask_address
+
+    text = "a4:c1:38:00:00:01 A4-C1-38-00-00-01 dev_A4_C1_38_00_00_01 ok"
+    assert mask_address(text) == "<address> <address> dev_<address> ok"
+
+
+async def test_connection_name_is_not_the_address(hass, client):
+    device = MagicMock()
+    device.name = None
+    establish = AsyncMock(return_value=client)
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            return_value=device,
+        ),
+        patch("custom_components.lcd_ticker.ble.establish_connection", establish),
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+    assert establish.await_args.args[2] == "thermometer"
+
+
+async def test_bluez_style_error_is_masked(hass):
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.lcd_ticker.ble.establish_connection",
+            AsyncMock(side_effect=BleakError("/org/bluez/hci0/dev_A4_C1_38_00_00_01")),
+        ),
+        pytest.raises(WriteFailed) as err,
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+    assert "A4_C1" not in str(err.value)

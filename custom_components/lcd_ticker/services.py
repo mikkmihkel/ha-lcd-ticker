@@ -13,7 +13,13 @@ import voluptuous as vol
 
 from .ble import get_writer
 from .const import CONF_ADDRESS, DOMAIN
-from .protocol import UNIT_KEYS, DisplayFrame, build_ext_frame, face_from_flags
+from .protocol import (
+    UNIT_KEYS,
+    DisplayFrame,
+    build_ext_frame,
+    face_from_flags,
+    round_half_away,
+)
 
 MAC_RE = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
 
@@ -48,15 +54,17 @@ SHOW_SCHEMA = vol.All(
 
 def _address_from_device(hass: HomeAssistant, device_id: str) -> str:
     device = dr.async_get(hass).async_get(device_id)
+    configured = False
     if device is not None:
         for entry_id in device.config_entries:
             entry = hass.config_entries.async_get_entry(entry_id)
-            if (
-                entry is not None
-                and entry.domain == DOMAIN
-                and entry.state is ConfigEntryState.LOADED
-            ):
+            if entry is None or entry.domain != DOMAIN:
+                continue
+            if entry.state is ConfigEntryState.LOADED:
                 return entry.data[CONF_ADDRESS]
+            configured = True
+    if configured:
+        raise ServiceValidationError("LCD Ticker entry for this device is not loaded")
     raise ServiceValidationError("Not an LCD Ticker thermometer")
 
 
@@ -72,7 +80,7 @@ async def _async_show(call: ServiceCall) -> None:
 
     frame = DisplayFrame(
         big=data["big"],
-        small=round(data["small"]),
+        small=round_half_away(data["small"]),
         validity=data["validity"],
         unit=UNIT_KEYS[data["unit"]],
         face=face_from_flags(data["happy"], data["sad"], data["bracket"]),

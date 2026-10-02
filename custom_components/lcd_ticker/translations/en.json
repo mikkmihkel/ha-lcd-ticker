@@ -44,32 +44,58 @@
       "init": {
         "title": "Display settings",
         "description": "Current settings: about {per_hour} updates per hour, {per_hour_present} while someone is present. Each update is one Bluetooth connection and uses some battery. Writes are skipped when the screen would not change, so the real number is usually lower.",
-        "data": {
-          "profile": "Battery profile",
-          "mode": "Mode",
-          "enabled": "Rotation on",
-          "seconds_per_screen": "Seconds per screen",
-          "presence_entity": "Faster when this is on",
-          "seconds_per_screen_present": "Seconds per screen while present",
-          "builtin_in_rotation": "Include the built-in temperature/humidity reading",
-          "builtin_seconds": "Seconds for the built-in reading",
-          "active_entity": "Only active when this is on",
-          "quiet_start": "Quiet hours start",
-          "quiet_end": "Quiet hours end",
-          "inactive_display": "When inactive, show",
-          "on_ha_stop": "If Home Assistant stops"
-        },
-        "data_description": {
-          "profile": "Choosing Eco, Balanced or Responsive sets both speeds. Editing a speed switches to Custom.",
-          "mode": "Single screen + built-in: the thermometer alternates your first screen with its own reading at no extra cost. Rotating: LCD Ticker switches between your screens.",
-          "presence_entity": "For example a motion sensor or a person. Screens change faster while it is on and for 10 minutes after.",
-          "active_entity": "For example a binary sensor that is on while solar panels produce. Counts as active when its state is on, home or above_horizon.",
-          "on_ha_stop": "Rotating mode only. Freeze keeps the last screen until Home Assistant is back. Alternate shows each screen alternating with the built-in reading and falls back to the built-in reading if Home Assistant stops."
+        "sections": {
+          "rotation": {
+            "name": "Rotation",
+            "data": {
+              "profile": "Battery profile",
+              "mode": "Mode",
+              "enabled": "Rotation on",
+              "seconds_per_screen": "Seconds per screen",
+              "builtin_in_rotation": "Include the built-in temperature/humidity reading",
+              "builtin_seconds": "Seconds for the built-in reading"
+            },
+            "data_description": {
+              "profile": "Choosing Eco, Balanced or Responsive sets both speeds. Editing a speed switches to Custom.",
+              "mode": "Single screen + built-in: the thermometer alternates your first screen with its own reading at no extra cost. Rotating: LCD Ticker switches between your screens."
+            }
+          },
+          "presence": {
+            "name": "Presence",
+            "data": {
+              "presence_entity": "Faster when this is on",
+              "seconds_per_screen_present": "Seconds per screen while present"
+            },
+            "data_description": {
+              "presence_entity": "For example a motion sensor or a person. Screens change faster while it is on and for 10 minutes after."
+            }
+          },
+          "pause": {
+            "name": "Pausing",
+            "data": {
+              "active_entity": "Only active when this is on",
+              "quiet_start": "Quiet hours start",
+              "quiet_end": "Quiet hours end",
+              "inactive_display": "When inactive, show"
+            },
+            "data_description": {
+              "active_entity": "For example a binary sensor that is on while solar panels produce. Counts as active when its state is on, home or above_horizon."
+            }
+          },
+          "safety": {
+            "name": "Safety",
+            "data": {
+              "on_ha_stop": "If Home Assistant stops"
+            },
+            "data_description": {
+              "on_ha_stop": "Rotating mode only. Freeze keeps the last screen until Home Assistant is back. Alternate shows each screen alternating with the built-in reading and falls back to the built-in reading if Home Assistant stops."
+            }
+          }
         }
       }
     },
     "error": {
-      "high_update_rate": "These settings mean about {per_hour} updates per hour, which drains the battery quickly. Submit again to save anyway.",
+      "high_update_rate": "These settings mean about {new_per_hour} updates per hour, which drains the battery quickly. Submit again to save anyway.",
       "quiet_hours_incomplete": "Set both a start and an end for quiet hours, or neither."
     }
   },
@@ -150,7 +176,8 @@
         "small_entity_required": "Pick the entity for the small number.",
         "production_required": "Pick the solar production sensor.",
         "thresholds_order": "Thresholds must go from lowest (1) to highest (4).",
-        "duplicate_markers": "Another screen looks exactly like this one on the LCD. Submit again to keep it anyway."
+        "duplicate_markers": "Another screen looks exactly like this one on the LCD. Submit again to keep it anyway.",
+        "seconds_too_short": "Use 0 (thermometer speed) or at least 30 seconds."
       },
       "abort": {
         "reconfigure_successful": "Re-configuration was successful"

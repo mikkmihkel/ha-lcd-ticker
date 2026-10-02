@@ -983,3 +983,148 @@ async def test_stop_during_write_creates_no_issue_or_signal(hass, freezer) -> No
     issue_id = f"{ISSUE_UNREACHABLE}_{entry.entry_id}"
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
     assert calls == []
+
+
+# ---- final review fixes ---------------------------------------------------
+
+
+async def test_render_error_does_not_stop_rotation(
+    hass, freezer, writer, run, caplog
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    real_render = render
+    calls = {"n": 0}
+
+    def flaky(data, values, validity):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ArithmeticError("boom")
+        return real_render(data, values, validity)
+
+    with patch("custom_components.lcd_ticker.scheduler.render", flaky):
+        await run(screens=(screen("sensor.a", 1), screen("sensor.b", 2)))
+        assert bigs(writer) == [2.0]  # the broken screen is skipped
+        await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [2.0, 1.0]
+    assert caplog.text.count("unexpected error rendering screen") == 1
+    assert "ArithmeticError" in caplog.text
+
+
+async def test_unexpected_tick_error_still_schedules_next_tick(
+    hass, freezer, writer, run, caplog
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    real = Scheduler._tick_rotating
+    calls = {"n": 0}
+
+    async def flaky(self, now, force):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("secret AA:BB:CC:DD:EE:FF")
+        await real(self, now, force)
+
+    with patch.object(Scheduler, "_tick_rotating", flaky):
+        await run(screens=(screen("sensor.a"),))
+        assert writer.writes == []
+        await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0]
+    loud = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("RuntimeError" in r.getMessage() for r in loud)
+    assert all("AA:BB" not in r.getMessage() and not r.exc_info for r in loud)
+
+
+async def test_short_screen_seconds_never_write_closer_than_the_gap(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    await run(
+        screens=(screen("sensor.a", 1, seconds=30), screen("sensor.b", 2, seconds=30))
+    )
+    assert bigs(writer) == [1.0]
+    await advance(hass, freezer, 30)
+    assert bigs(writer) == [1.0]
+    await advance(hass, freezer, MIN_WRITE_GAP - 30)
+    assert bigs(writer) == [1.0, 2.0]
+    await advance(hass, freezer, 30)
+    assert bigs(writer) == [1.0, 2.0]
+    await advance(hass, freezer, MIN_WRITE_GAP - 30)
+    assert bigs(writer) == [1.0, 2.0, 1.0]
+
+
+async def test_single_mode_short_dwell_respects_the_gap(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    await run(
+        {CONF_MODE: MODE_SINGLE, CONF_ON_HA_STOP: HA_STOP_ALTERNATE},
+        screens=(screen("sensor.a", seconds=30),),
+    )
+    assert bigs(writer) == [1.0]
+    set_value(hass, "sensor.a", "2")
+    await advance(hass, freezer, 30)
+    assert bigs(writer) == [1.0]
+    await advance(hass, freezer, MIN_WRITE_GAP - 30)
+    assert bigs(writer) == [1.0, 2.0]
+
+
+def test_estimate_uses_the_write_gap() -> None:
+    screens = [screen("sensor.a", seconds=30), screen("sensor.b", seconds=30)]
+    assert estimate_updates_per_hour(default_options(), screens) == (60.0, 60.0)
+    fast = {**default_options(), CONF_MODE: MODE_SINGLE, CONF_SECONDS: 30}
+    assert estimate_updates_per_hour(fast, [screen("sensor.a")])[0] == 60.0
+
+
+async def test_no_early_write_before_ha_started(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "5")
+    hass.states.async_set("binary_sensor.act", "off")
+    hass.set_state(CoreState.starting)
+    options = {CONF_ACTIVE_ENTITY: "binary_sensor.act"}
+    scheduler = await run(options, screens=(screen("sensor.a"),), first_tick=False)
+    hass.states.async_set("binary_sensor.act", "on")
+    await hass.async_block_till_done()
+    assert scheduler.active is True
+    await advance(hass, freezer, 2 * ACTIVITY_CHECK_INTERVAL)
+    assert writer.writes == []
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire("homeassistant_started")
+    await hass.async_block_till_done()
+    await advance(hass, freezer, START_DELAY - 1)
+    assert writer.writes == []
+    await advance(hass, freezer, 1)
+    assert bigs(writer) == [5.0]
+
+
+async def test_failed_inactive_write_is_retried_once(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "5")
+    writer.fail = WriteFailed("nope")
+    scheduler = await run({CONF_ENABLED: False}, screens=(screen("sensor.a"),))
+    assert scheduler.reachable is False
+    writer.fail = None
+    await advance(hass, freezer, DWELL)
+    assert len(writer.writes) == 1
+    assert decode(writer.writes[0])[2] == VALIDITY_BUILTIN
+    await advance(hass, freezer, 3 * DWELL)
+    assert len(writer.writes) == 1
+
+
+async def test_failed_inactive_retry_gives_up(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "5")
+    writer.fail = WriteFailed("nope")
+    scheduler = await run({CONF_ENABLED: False}, screens=(screen("sensor.a"),))
+    await advance(hass, freezer, DWELL)  # the one retry, also fails
+    writer.fail = None
+    await advance(hass, freezer, 3 * DWELL)
+    assert writer.writes == []
+    assert scheduler.active is False
+
+
+async def test_last_error_is_masked_and_truncated(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "5")
+    writer.fail = RuntimeError("dev_AA_BB_CC_DD_EE_FF " + "x" * 400)
+    scheduler = await run(screens=(screen("sensor.a"),))
+    assert len(scheduler.last_error) == 255
+    assert scheduler.last_error.startswith("dev_<address> x")

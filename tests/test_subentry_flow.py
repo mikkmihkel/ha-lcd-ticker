@@ -178,6 +178,21 @@ async def test_unit_not_supported(hass: HomeAssistant) -> None:
     assert result["errors"] == {CONF_BIG_ENTITY: "unit_not_supported"}
 
 
+async def test_look_step_rejects_short_seconds(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await configure(
+        hass, result, {CONF_BIG_ENTITY: "sensor.price"}, {CONF_SCREEN_SECONDS: 10}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "look"
+    assert result["errors"] == {CONF_SCREEN_SECONDS: "seconds_too_short"}
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SCREEN_SECONDS: 30}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
 async def test_thresholds_order(hass: HomeAssistant) -> None:
     entry = await make_entry(hass)
     result = await start(hass, entry, "price")
@@ -251,3 +266,18 @@ async def test_unit_from_entity_registry(hass: HomeAssistant) -> None:
     result = await configure(hass, result, {CONF_BIG_ENTITY: "sensor.reg"})
     assert result["step_id"] == "sources"
     assert result["errors"] == {CONF_BIG_ENTITY: "unit_not_supported"}
+
+
+@pytest.mark.parametrize(
+    "key", ["big_multiplier", "big_offset", "small_multiplier", "small_offset"]
+)
+def test_scaling_fields_are_bounded(key: str) -> None:
+    import voluptuous as vol
+
+    from custom_components.lcd_ticker.config_flow import _screen_selector
+
+    selector = _screen_selector(key, "custom")
+    assert selector(100000) == 100000
+    for value in (100001, -100001, 1e308):
+        with pytest.raises(vol.Invalid):
+            selector(value)

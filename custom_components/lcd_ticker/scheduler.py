@@ -27,7 +27,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
-from .ble import BleWriter, DeviceUnreachable, WriteFailed
+from .ble import BleWriter, DeviceUnreachable, WriteFailed, mask_address
 from .const import (
     ACTIVE_STATES,
     ACTIVITY_CHECK_INTERVAL,
@@ -80,6 +80,7 @@ from .render import SourceValue, render, screen_entity_ids
 _LOGGER = logging.getLogger(__name__)
 
 BUILTIN_NAME = "Built-in reading"
+LAST_ERROR_MAX = 255
 
 
 def in_quiet_hours(now: datetime.time, start: str | None, end: str | None) -> bool:
@@ -111,14 +112,21 @@ def _dwell_seconds(
 def estimate_updates_per_hour(
     options: Mapping[str, Any], screens: Sequence[Mapping[str, Any]]
 ) -> tuple[float, float]:
-    """Expected writes per hour as (normal, present), at most one write per dwell."""
+    """Expected writes per hour as (normal, present).
+
+    At most one write per dwell, and never closer than MIN_WRITE_GAP.
+    """
     enabled = [s for s in screens if s.get(CONF_SCREEN_ENABLED, True)]
     has_presence = bool(options.get(CONF_PRESENCE_ENTITY))
     if options.get(CONF_MODE) == MODE_SINGLE:
         if not enabled:
             return (0.0, 0.0)
-        normal = 3600 / options[CONF_SECONDS]
-        present = 3600 / options[CONF_SECONDS_PRESENT] if has_presence else normal
+        normal = 3600 / max(options[CONF_SECONDS], MIN_WRITE_GAP)
+        present = (
+            3600 / max(options[CONF_SECONDS_PRESENT], MIN_WRITE_GAP)
+            if has_presence
+            else normal
+        )
         return (round(normal, 1), round(present, 1))
 
     slots: list[Mapping[str, Any] | None] = list(enabled)
@@ -126,8 +134,12 @@ def estimate_updates_per_hour(
         slots.append(None)
     if not slots:
         return (0.0, 0.0)
-    normal_total = sum(_dwell_seconds(options, s, False) for s in slots)
-    present_total = sum(_dwell_seconds(options, s, has_presence) for s in slots)
+    normal_total = sum(
+        max(_dwell_seconds(options, s, False), MIN_WRITE_GAP) for s in slots
+    )
+    present_total = sum(
+        max(_dwell_seconds(options, s, has_presence), MIN_WRITE_GAP) for s in slots
+    )
     return (
         round(3600 * len(slots) / normal_total, 1),
         round(3600 * len(slots) / present_total, 1),
@@ -168,6 +180,9 @@ class Scheduler:
         self._index = -1
         self._active = False
         self._inactive_written = False
+        self._inactive_retried = False
+        self._ready = False
+        self._render_error_logged = False
         self._presence_off_at: datetime.datetime | None = None
         self._last_payload: bytes | None = None
         self._last_big: dict[str, float] = {}
@@ -303,7 +318,22 @@ class Scheduler:
         data = self._screen_data(slot)
         if data is None:
             return None
-        return render(data, self._values(data), self._validity())
+        try:
+            return render(data, self._values(data), self._validity())
+        except Exception as err:
+            self._log_render_error(err)
+            return None
+
+    def _log_render_error(self, err: Exception) -> None:
+        """Log an unexpected render error once; details only at debug."""
+        if not self._render_error_logged:
+            self._render_error_logged = True
+            _LOGGER.error(
+                "%s: unexpected error rendering screen: %s",
+                self.entry.title,
+                type(err).__name__,
+            )
+        _LOGGER.debug("Render error details", exc_info=True)
 
     # ---- presence and activity ------------------------------------------
 
@@ -378,6 +408,13 @@ class Scheduler:
             return now
         return max(now, self._last_write_at + datetime.timedelta(seconds=MIN_WRITE_GAP))
 
+    def _next_due(self, now: datetime.datetime, seconds: float) -> datetime.datetime:
+        """Next automatic tick: after `seconds`, and never inside the write gap."""
+        due = now + datetime.timedelta(seconds=seconds)
+        if self._last_write_at is None:
+            return due
+        return max(due, self._last_write_at + datetime.timedelta(seconds=MIN_WRITE_GAP))
+
     # ---- lifecycle -------------------------------------------------------
 
     async def async_start(self) -> None:
@@ -405,6 +442,7 @@ class Scheduler:
         self._active = self._is_active()
         self._started_at = dt_util.utcnow()
         if self.hass.state is CoreState.running:
+            self._ready = True
             self._schedule_at(
                 self._started_at + datetime.timedelta(seconds=RELOAD_DELAY)
             )
@@ -413,6 +451,7 @@ class Scheduler:
 
     @callback
     def _on_ha_started(self, _hass: HomeAssistant) -> None:
+        self._ready = True
         self._schedule_at(dt_util.utcnow() + datetime.timedelta(seconds=START_DELAY))
 
     async def async_stop(self) -> None:
@@ -436,14 +475,28 @@ class Scheduler:
             self._last_tick_at = now
             if not self._active:
                 if force or not self._inactive_written:
-                    await self._async_write_inactive()
-                self._inactive_written = True
+                    await self._finish_inactive(now, force)
                 return
             self._inactive_written = False
-            if self._options.get(CONF_MODE) == MODE_SINGLE:
-                await self._tick_single(now, force)
-            else:
-                await self._tick_rotating(now, force)
+            self._inactive_retried = False
+            try:
+                if self._options.get(CONF_MODE) == MODE_SINGLE:
+                    await self._tick_single(now, force)
+                else:
+                    await self._tick_rotating(now, force)
+            except Exception as err:
+                self._log_render_error(err)
+                self._schedule_after_write(self._next_due(now, self._dwell(None)))
+
+    async def _finish_inactive(self, now: datetime.datetime, force: bool) -> None:
+        """Write the inactive display; after a failure retry once, later."""
+        ok = await self._async_write_inactive()
+        if ok or force or self._inactive_retried:
+            self._inactive_written = True
+            self._inactive_retried = False
+        else:
+            self._inactive_retried = True
+            self._schedule_after_write(self._next_due(now, self._dwell(None)))
 
     async def _tick_rotating(self, now: datetime.datetime, force: bool) -> None:
         count = len(self._slots)
@@ -457,13 +510,9 @@ class Scheduler:
             if frame is not None:
                 self._index = index
                 await self._async_write_frame(slot, frame, force)
-                self._schedule_after_write(
-                    now + datetime.timedelta(seconds=self._dwell(slot))
-                )
+                self._schedule_after_write(self._next_due(now, self._dwell(slot)))
                 return
-        self._schedule_after_write(
-            now + datetime.timedelta(seconds=self._options[CONF_SECONDS])
-        )
+        self._schedule_after_write(self._next_due(now, self._options[CONF_SECONDS]))
 
     async def _tick_single(self, now: datetime.datetime, force: bool) -> None:
         slot = self._slots[0] if self._slots else None
@@ -471,9 +520,10 @@ class Scheduler:
         if slot is not None and frame is not None:
             self._index = 0
             await self._async_write_frame(slot, frame, force)
-        self._schedule_after_write(now + datetime.timedelta(seconds=self._dwell(slot)))
+        self._schedule_after_write(self._next_due(now, self._dwell(slot)))
 
-    async def _async_write_inactive(self) -> None:
+    async def _async_write_inactive(self) -> bool:
+        """Write the inactive display. True if it worked or nothing was to write."""
         mode = self._options.get(CONF_INACTIVE_DISPLAY, INACTIVE_BUILTIN)
         if mode == INACTIVE_BUILTIN:
             frame = DisplayFrame(validity=VALIDITY_BUILTIN)
@@ -486,20 +536,25 @@ class Scheduler:
                 battery=bool(first.get(CONF_BATTERY, False)),
             )
         else:
-            return
-        await self._async_write_frame(None, frame, True)
+            return True
+        return await self._async_write_frame(None, frame, True)
 
     async def _async_write_frame(
         self, slot: str | None, frame: DisplayFrame, must: bool
-    ) -> None:
-        """Write if the frame changed, `must`, or a finite one is about to expire."""
+    ) -> bool:
+        """Write if the frame changed, `must`, or a finite one is about to expire.
+
+        True if the LCD shows the frame afterwards.
+        """
         payload = build_ext_frame(frame)
         if not must and payload == self._last_payload and not self._is_stale(frame):
-            return
+            return True
         if await self._async_send(payload):
             self._last_payload = payload
             if slot is not None and slot != BUILTIN_SLOT:
                 self._last_big[slot] = frame.big
+            return True
+        return False
 
     def _is_stale(self, frame: DisplayFrame) -> bool:
         """An active finite-validity frame older than 2/3 of its validity."""
@@ -545,13 +600,22 @@ class Scheduler:
         if self._outage_started_at is None:
             self._outage_started_at = dt_util.utcnow()
         self.reachable = False
-        self.last_error = str(err) or type(err).__name__
+        message = mask_address(str(err)) or type(err).__name__
+        self.last_error = message[:LAST_ERROR_MAX]
+        _LOGGER.debug("Write failed", exc_info=True)
         if not self._warned:
             self._warned = True
             if unexpected:
-                _LOGGER.exception("Unexpected error writing to %s", self.entry.title)
+                _LOGGER.error(
+                    "Unexpected error writing to %s: %s: %s",
+                    self.entry.title,
+                    type(err).__name__,
+                    self.last_error,
+                )
             else:
-                _LOGGER.warning("%s is unavailable: %s", self.entry.title, err)
+                _LOGGER.warning(
+                    "%s is unavailable: %s", self.entry.title, self.last_error
+                )
         if self._failures >= FAILURES_FOR_ISSUE:
             self._set_issue()
 
@@ -566,7 +630,8 @@ class Scheduler:
             self._active = active
             if active and self._outage_started_at is not None:
                 self._outage_started_at = now  # the outage clock paused while inactive
-            self._schedule_at(self._earliest_write(now))
+            if self._ready:
+                self._schedule_at(self._earliest_write(now))
             self._notify()
         if active and self._outage_started_at is not None:
             outage = (now - self._outage_started_at).total_seconds()
@@ -602,7 +667,7 @@ class Scheduler:
         if self._tick_due is None or self._last_tick_at is None:
             return
         target = max(
-            now,
+            self._earliest_write(now),
             self._last_tick_at
             + datetime.timedelta(seconds=self._dwell(self.current_slot)),
         )
@@ -646,9 +711,7 @@ class Scheduler:
             await self._async_write_frame(slot, frame, True)
         self._last_tick_at = now
         if self._active:
-            self._schedule_after_write(
-                now + datetime.timedelta(seconds=self._dwell(slot))
-            )
+            self._schedule_after_write(self._next_due(now, self._dwell(slot)))
 
     async def async_show_now(self, slot_id: str) -> None:
         """Show a slot now, even when inactive."""
@@ -690,7 +753,9 @@ class Scheduler:
                 self._schedule_at(due)
             elif self._last_tick_at is not None:
                 dwell = datetime.timedelta(seconds=self._dwell(self.current_slot))
-                self._schedule_at(max(now, self._last_tick_at + dwell))
+                self._schedule_at(
+                    max(self._earliest_write(now), self._last_tick_at + dwell)
+                )
         self._notify()
 
     # ---- Repairs ---------------------------------------------------------

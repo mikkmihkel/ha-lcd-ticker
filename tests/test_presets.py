@@ -280,6 +280,13 @@ def test_validate_look_thresholds():
     assert validate_look(unsorted_but_not_scale) == {}
 
 
+def test_validate_look_seconds():
+    ok = new_screen_data("custom", 1)
+    assert validate_look(ok | {"seconds": 0}) == {}
+    assert validate_look(ok | {"seconds": 30}) == {}
+    assert validate_look(ok | {"seconds": 10}) == {"seconds": "seconds_too_short"}
+
+
 def test_default_title():
     assert default_title("solar", None) == "Solar"
     assert default_title("single", None) == "Value"

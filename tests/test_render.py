@@ -288,3 +288,30 @@ def test_render_wrong_unit_for_conversion_returns_none():
         "sensor.export": SourceValue("0", "W"),
     }
     assert render(SOLAR, values, 65535) is None
+
+
+def test_render_overflowing_big_value_returns_none():
+    screen = {"big_entity": "sensor.x", "big_multiplier": 10.0}
+    assert render(screen, {"sensor.x": SourceValue("1e308", None)}, 65535) is None
+
+
+def test_render_overflowing_small_value_returns_none():
+    screen = {
+        "big_entity": "sensor.x",
+        "small_source": "entity",
+        "small_entity": "sensor.y",
+        "small_multiplier": 10.0,
+    }
+    values = {
+        "sensor.x": SourceValue("1", None),
+        "sensor.y": SourceValue("1e308", None),
+    }
+    assert render(screen, values, 65535) is None
+
+
+def test_render_overflowing_self_consumption_returns_none():
+    values = {
+        "sensor.pv": SourceValue("1e308", "kW"),
+        "sensor.export": SourceValue("0", "W"),
+    }
+    assert render(SOLAR, values, 65535) is None

@@ -23,13 +23,18 @@ jobs:
       - run: python -c "import json,sys,os; v=json.load(open('custom_components/lcd_ticker/manifest.json'))['version']; t=os.environ['GITHUB_REF_NAME'].lstrip('v'); sys.exit(0 if v==t else f'manifest {v} != tag {t}')"
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: python scripts/build_translations.py && git diff --exit-code
       - run: pytest -q
       - run: |
           VER=$(echo "$TAG" | sed 's/^v//')
           awk -v ver="$VER" '$0 ~ /^## \[/ { if (found) exit; if ($0 ~ "## \\[" ver "\\]") { found=1; next } } found { print }' CHANGELOG.md > notes.md
         env:
           TAG: ${{ github.ref_name }}
-      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+      - run: test -s notes.md
+      - run: cd custom_components/lcd_ticker && zip -r ../../lcd_ticker.zip . -x '*__pycache__*'
+      - run: gh release create "$GITHUB_REF_NAME" lcd_ticker.zip --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}

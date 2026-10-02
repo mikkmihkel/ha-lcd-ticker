@@ -16,7 +16,7 @@ first so the next scheduled screen does not overwrite the test frame.
 | H4 | Big number ranges | YAML H4 below | One decimal up to 199.5, whole numbers above, no `iH`/`oL` at the limits | | |
 | H5 | What each unit code and each face value looks like | YAML H5 below | Photo table of the 8 units and the 8 face values. Note any that look broken. | | |
 | H6 | Finite validity expires on time without any time sync | YAML H6 below | Own reading only after about 60 s | | |
-| H7 | BTHome battery appears on the same HA device page | Check the device page | The BTHome device for the same MAC merges onto the LCD Ticker device | | |
+| H7 | BTHome device for the same MAC exists and shows the battery | Check the Devices page | A separate BTHome device with the battery sensor exists. It does not merge onto the LCD Ticker device. | | |
 | H8 | Write without response followed by an immediate disconnect is reliable over 50 writes | Script H8 below | All 50 writes show on the LCD, with no errors in the log | | |
 | H9 | Two-week soak at Balanced | Run the Balanced profile for two weeks | Battery % logged daily. Record the start and end values. | | |
 
@@ -94,9 +94,9 @@ data:
   validity: 65535
 ```
 
-For faces, send each combination from the README table (for example `happy: true` with
-`bracket: true`). Face values 4 and 7 cannot be set from the action. Note them as untested
-unless you send a raw frame another way.
+For faces, send each combination from [docs/reference.md](reference.md) (for example
+`happy: true` with `bracket: true`). Face 4 is `bracket: true` alone. Face 7 is `happy`,
+`sad` and `bracket` together.
 
 ## H6: expiry without time sync
 

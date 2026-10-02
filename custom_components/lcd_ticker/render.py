@@ -197,7 +197,8 @@ def _field_value(
         return None
     if target == CONVERT_CENTS_KWH:
         value *= 1 + screen.get(CONF_VAT_PERCENT, 0.0) / 100
-    return value * screen.get(multiplier_key, 1.0) + screen.get(offset_key, 0.0)
+    result = value * screen.get(multiplier_key, 1.0) + screen.get(offset_key, 0.0)
+    return result if math.isfinite(result) else None
 
 
 def _watts(source: SourceValue | None) -> float | None:
@@ -206,7 +207,8 @@ def _watts(source: SourceValue | None) -> float | None:
     value = parse_number(source.state)
     if value is None or source.unit not in PowerConverter.VALID_UNITS:
         return None
-    return PowerConverter.convert(value, source.unit, UnitOfPower.WATT)
+    watts = PowerConverter.convert(value, source.unit, UnitOfPower.WATT)
+    return watts if math.isfinite(watts) else None
 
 
 def _self_consumption(
@@ -220,7 +222,8 @@ def _self_consumption(
         return None
     if production < SELF_CONSUMPTION_MIN_W:
         return 0.0
-    return max(0.0, min(100.0, (production - export) / production * 100))
+    share = (production - export) / production * 100
+    return max(0.0, min(100.0, share)) if math.isfinite(share) else None
 
 
 def _face(screen: Mapping[str, Any], big: float, small: int) -> Face:

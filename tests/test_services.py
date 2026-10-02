@@ -97,7 +97,7 @@ async def test_show_unknown_device(
     hass: HomeAssistant,
     setup_entry,
 ) -> None:
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError, match="Not an LCD Ticker"):
         await call(hass, {"device_id": "nope"})
 
 
@@ -119,5 +119,13 @@ async def test_show_device_of_unloaded_entry(hass: HomeAssistant, setup_entry) -
     )
     await hass.config_entries.async_unload(setup_entry.entry_id)
     await hass.async_block_till_done()
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError, match="is not loaded"):
         await call(hass, {"device_id": device.id})
+
+
+@pytest.mark.parametrize(("small", "expected"), [(2.5, 3), (-2.5, -3), (0.4, 0)])
+async def test_show_small_rounds_half_away_from_zero(
+    hass: HomeAssistant, setup_entry, writer: FakeWriter, small: float, expected: int
+) -> None:
+    await call(hass, {"address": ADDR, "small": small})
+    assert int.from_bytes(writer.writes[0][3:5], "little", signed=True) == expected

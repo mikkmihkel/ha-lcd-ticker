@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Sequence
 import contextlib
 import logging
+import re
 
 from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
@@ -24,7 +25,15 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Also matches the BlueZ forms dev_AA_BB_CC_DD_EE_FF and dash-separated MACs.
+_MAC_RE = re.compile(r"(?i)([0-9a-f]{2}[:_-]){5}[0-9a-f]{2}")
+
 WRITER_KEY: HassKey[BleWriter] = HassKey(f"{DOMAIN}_writer")
+
+
+def mask_address(text: str) -> str:
+    """Hide any MAC address in text."""
+    return _MAC_RE.sub("<address>", text)
 
 
 class DeviceUnreachable(HomeAssistantError):
@@ -62,17 +71,14 @@ class BleWriter:
             client = await establish_connection(
                 BleakClientWithServiceCache,
                 device,
-                address,
+                device.name or "thermometer",
                 max_attempts=CONNECT_ATTEMPTS,
             )
             for frame in frames:
                 await client.write_gatt_char(CHAR_UUID, frame, response=False)
             _LOGGER.debug("wrote %d frame(s)", len(frames))
         except (BleakError, OSError, EOFError) as err:
-            msg = str(err) or type(err).__name__
-            # Mask the MAC address from error messages
-            msg = msg.replace(address, "<address>")
-            msg = msg.replace(address.lower(), "<address>")
+            msg = mask_address(str(err)) or type(err).__name__
             raise WriteFailed(msg) from err
         finally:
             if client is not None:

@@ -69,12 +69,33 @@ async def setup_entry(hass: HomeAssistant, options=None, screens=0) -> MockConfi
     return entry
 
 
-def form_input(entry: MockConfigEntry, **changes) -> dict:
-    data = {
+SECTIONS = {
+    "rotation": (
+        "profile",
+        "mode",
+        "enabled",
+        "seconds_per_screen",
+        "builtin_in_rotation",
+        "builtin_seconds",
+    ),
+    "presence": ("presence_entity", "seconds_per_screen_present"),
+    "pause": ("active_entity", "quiet_start", "quiet_end", "inactive_display"),
+    "safety": ("on_ha_stop",),
+}
+
+
+def form_input(entry: MockConfigEntry, drop=(), **changes) -> dict:
+    """The sectioned form input for the entry's options plus flat changes."""
+    flat = {
         k: v for k, v in {**default_options(), **entry.options}.items() if v is not None
     }
-    data.update(changes)
-    return data
+    flat.update(changes)
+    for key in drop:
+        flat.pop(key, None)
+    return {
+        name: {key: flat[key] for key in keys if key in flat}
+        for name, keys in SECTIONS.items()
+    }
 
 
 async def test_profile_change_sets_speeds(hass: HomeAssistant) -> None:
@@ -137,7 +158,10 @@ async def test_high_update_rate_warns_once(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "high_update_rate"}
-    assert float(result["description_placeholders"]["per_hour"]) == 120.0
+    # 3 screens, 60 s each (the minimum gap): 60 per hour. The description still
+    # shows the current settings.
+    assert float(result["description_placeholders"]["new_per_hour"]) == 60.0
+    assert float(result["description_placeholders"]["per_hour"]) == 7.5
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input
@@ -152,11 +176,29 @@ async def test_clearing_presence_entity_stores_none(hass: HomeAssistant) -> None
         hass,
         options={**default_options(), CONF_PRESENCE_ENTITY: "binary_sensor.motion"},
     )
-    user_input = form_input(entry)
-    del user_input[CONF_PRESENCE_ENTITY]
+    user_input = form_input(entry, drop=[CONF_PRESENCE_ENTITY])
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_PRESENCE_ENTITY] is None
+
+
+async def test_form_is_sectioned_and_stored_options_stay_flat(
+    hass: HomeAssistant,
+) -> None:
+    entry = await setup_entry(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert list(result["data_schema"].schema) == list(SECTIONS)
+    suggested = {
+        marker.schema: marker.description["suggested_value"]
+        for marker in result["data_schema"].schema["rotation"].schema.schema
+        if marker.description
+    }
+    assert suggested[CONF_PROFILE] == "balanced"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], form_input(entry)
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert set(result["data"]) == set(default_options())

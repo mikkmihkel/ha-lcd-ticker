@@ -21,6 +21,7 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -143,6 +144,33 @@ _FLOAT_FIELDS = (
     CONF_FACE_T3,
     CONF_FACE_T4,
 )
+_SCALING_FIELDS = (
+    CONF_BIG_MULTIPLIER,
+    CONF_BIG_OFFSET,
+    CONF_SMALL_MULTIPLIER,
+    CONF_SMALL_OFFSET,
+)
+MAX_SCALING = 100000
+
+# Options form sections (name -> option keys); stored options stay flat.
+_SECTIONS = {
+    "rotation": (
+        CONF_PROFILE,
+        CONF_MODE,
+        CONF_ENABLED,
+        CONF_SECONDS,
+        CONF_BUILTIN_IN_ROTATION,
+        CONF_BUILTIN_SECONDS,
+    ),
+    "presence": (CONF_PRESENCE_ENTITY, CONF_SECONDS_PRESENT),
+    "pause": (
+        CONF_ACTIVE_ENTITY,
+        CONF_QUIET_START,
+        CONF_QUIET_END,
+        CONF_INACTIVE_DISPLAY,
+    ),
+    "safety": (CONF_ON_HA_STOP,),
+}
 
 
 def _select(options: list[str], key: str) -> SelectSelector:
@@ -160,10 +188,14 @@ def _entity(domain: list[str], device_class: str | None = None) -> EntitySelecto
     return EntitySelector(EntitySelectorConfig(filter=flt))
 
 
-def _any_number(minimum: float | None = None) -> NumberSelector:
+def _any_number(
+    minimum: float | None = None, maximum: float | None = None
+) -> NumberSelector:
     config = NumberSelectorConfig(step="any", mode=NumberSelectorMode.BOX)
     if minimum is not None:
         config["min"] = minimum
+    if maximum is not None:
+        config["max"] = maximum
     return NumberSelector(config)
 
 
@@ -200,6 +232,8 @@ def _screen_selector(key: str, preset: str) -> Any:
         return _select(SMALL_SOURCE_OPTIONS, "small_source")
     if key == CONF_JUMP_DELTA:
         return _any_number(minimum=0)
+    if key in _SCALING_FIELDS:
+        return _any_number(-MAX_SCALING, MAX_SCALING)
     if key in _FLOAT_FIELDS and key != CONF_VAT_PERCENT:
         return _any_number()
     if key == CONF_VAT_PERCENT:
@@ -386,30 +420,79 @@ class LcdTickerOptionsFlow(OptionsFlow):
     def _schema() -> vol.Schema:
         return vol.Schema(
             {
-                vol.Required(CONF_PROFILE): _select(PROFILE_OPTIONS, "profile"),
-                vol.Required(CONF_MODE): _select(MODES, "mode"),
-                vol.Required(CONF_ENABLED): BooleanSelector(),
-                vol.Required(CONF_SECONDS): _seconds(MIN_SECONDS),
-                vol.Optional(CONF_PRESENCE_ENTITY): _entity(
-                    ["binary_sensor", "person", "input_boolean", "device_tracker"]
+                vol.Required("rotation"): section(
+                    vol.Schema(
+                        {
+                            vol.Required(CONF_PROFILE): _select(
+                                PROFILE_OPTIONS, "profile"
+                            ),
+                            vol.Required(CONF_MODE): _select(MODES, "mode"),
+                            vol.Required(CONF_ENABLED): BooleanSelector(),
+                            vol.Required(CONF_SECONDS): _seconds(MIN_SECONDS),
+                            vol.Required(CONF_BUILTIN_IN_ROTATION): BooleanSelector(),
+                            vol.Required(CONF_BUILTIN_SECONDS): _seconds(MIN_SECONDS),
+                        }
+                    )
                 ),
-                vol.Required(CONF_SECONDS_PRESENT): _seconds(MIN_SECONDS),
-                vol.Required(CONF_BUILTIN_IN_ROTATION): BooleanSelector(),
-                vol.Required(CONF_BUILTIN_SECONDS): _seconds(MIN_SECONDS),
-                vol.Optional(CONF_ACTIVE_ENTITY): _entity(
-                    ["binary_sensor", "input_boolean", "sun", "person"]
+                vol.Required("presence"): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(CONF_PRESENCE_ENTITY): _entity(
+                                [
+                                    "binary_sensor",
+                                    "person",
+                                    "input_boolean",
+                                    "device_tracker",
+                                ]
+                            ),
+                            vol.Required(CONF_SECONDS_PRESENT): _seconds(MIN_SECONDS),
+                        }
+                    )
                 ),
-                vol.Optional(CONF_QUIET_START): TimeSelector(),
-                vol.Optional(CONF_QUIET_END): TimeSelector(),
-                vol.Required(CONF_INACTIVE_DISPLAY): _select(
-                    INACTIVE_OPTIONS, "inactive_display"
+                vol.Required("pause"): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(CONF_ACTIVE_ENTITY): _entity(
+                                ["binary_sensor", "input_boolean", "sun", "person"]
+                            ),
+                            vol.Optional(CONF_QUIET_START): TimeSelector(),
+                            vol.Optional(CONF_QUIET_END): TimeSelector(),
+                            vol.Required(CONF_INACTIVE_DISPLAY): _select(
+                                INACTIVE_OPTIONS, "inactive_display"
+                            ),
+                        }
+                    )
                 ),
-                vol.Required(CONF_ON_HA_STOP): _select(HA_STOP_OPTIONS, "on_ha_stop"),
+                vol.Required("safety"): section(
+                    vol.Schema(
+                        {
+                            vol.Required(CONF_ON_HA_STOP): _select(
+                                HA_STOP_OPTIONS, "on_ha_stop"
+                            ),
+                        }
+                    )
+                ),
             }
         )
 
+    @staticmethod
+    def _flatten(user_input: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge the sections of the form input into one flat dict."""
+        flat: dict[str, Any] = {}
+        for name in _SECTIONS:
+            flat.update(user_input.get(name, {}))
+        return flat
+
+    @staticmethod
+    def _nest(flat: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+        """Group flat option values by form section."""
+        return {
+            name: {key: flat[key] for key in keys if key in flat}
+            for name, keys in _SECTIONS.items()
+        }
+
     def _build(self, user_input: Mapping[str, Any]) -> dict[str, Any]:
-        """Turn form input into options: ints, Nones, and the profile rule."""
+        """Turn flat form input into options: ints, Nones, and the profile rule."""
         current = {**default_options(), **self.config_entry.options}
         new = {key: user_input.get(key) for key in default_options()}
         for key in (CONF_SECONDS, CONF_SECONDS_PRESENT, CONF_BUILTIN_SECONDS):
@@ -439,18 +522,18 @@ class LcdTickerOptionsFlow(OptionsFlow):
             "per_hour_present": str(per_hour_present),
         }
         errors: dict[str, str] = {}
-        suggested = {k: v for k, v in current.items() if v is not None}
+        suggested = self._nest({k: v for k, v in current.items() if v is not None})
 
         if user_input is not None:
-            suggested = dict(user_input)
-            new = self._build(user_input)
+            suggested = user_input
+            new = self._build(self._flatten(user_input))
             normal, present = estimate_updates_per_hour(new, screens)
             if (new[CONF_QUIET_START] is None) != (new[CONF_QUIET_END] is None):
                 errors["base"] = "quiet_hours_incomplete"
             elif max(normal, present) > WARN_UPDATES_PER_HOUR and not self._warned:
                 self._warned = True
                 errors["base"] = "high_update_rate"
-                placeholders["per_hour"] = str(max(normal, present))
+                placeholders["new_per_hour"] = str(max(normal, present))
             else:
                 return self.async_create_entry(data=new)
 

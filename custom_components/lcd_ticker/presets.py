@@ -49,6 +49,7 @@ from .const import (
     FACE_MODE_SCALE,
     FACE_SOURCE_BIG,
     FACE_SOURCE_SMALL,
+    MIN_SECONDS,
     PRESET_CLIMATE,
     PRESET_CUSTOM,
     PRESET_PRICE,
@@ -300,15 +301,18 @@ def validate_sources(
 
 
 def validate_look(data: Mapping[str, Any]) -> dict[str, str]:
-    """Scale thresholds must be in ascending order."""
-    if data.get(CONF_FACE_MODE) != FACE_MODE_SCALE:
-        return {}
-    t1, t2, t3, t4 = (
-        data[key] for key in (CONF_FACE_T1, CONF_FACE_T2, CONF_FACE_T3, CONF_FACE_T4)
-    )
-    if t1 <= t2 <= t3 <= t4:
-        return {}
-    return {"base": "thresholds_order"}
+    """Seconds are 0 or at least MIN_SECONDS; scale thresholds ascend."""
+    errors: dict[str, str] = {}
+    if 0 < data.get(CONF_SCREEN_SECONDS, 0) < MIN_SECONDS:
+        errors[CONF_SCREEN_SECONDS] = "seconds_too_short"
+    if data.get(CONF_FACE_MODE) == FACE_MODE_SCALE:
+        t1, t2, t3, t4 = (
+            data[key]
+            for key in (CONF_FACE_T1, CONF_FACE_T2, CONF_FACE_T3, CONF_FACE_T4)
+        )
+        if not t1 <= t2 <= t3 <= t4:
+            errors["base"] = "thresholds_order"
+    return errors
 
 
 def default_title(preset: str, entity_name: str | None) -> str:

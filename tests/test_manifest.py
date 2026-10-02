@@ -29,6 +29,8 @@ def test_hacs_json() -> None:
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert hacs["name"] == "LCD Ticker"
     assert hacs["homeassistant"] == "2026.3.0"
+    assert hacs["zip_release"] is True
+    assert hacs["filename"] == "lcd_ticker.zip"
 
 
 def test_translations_are_built_from_strings() -> None:

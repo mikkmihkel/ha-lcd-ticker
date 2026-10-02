@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-02
+
 ### Added
 
 - Config entry per thermometer, found by Bluetooth discovery or added by MAC address, with a test frame on setup.
@@ -23,3 +25,4 @@ All notable changes to this project are documented here. The format follows
 - Action `lcd_ticker.show`, compatible with `pvvx_display.show`.
 - Diagnostics download with the MAC address redacted.
 - Warning when two screens look the same on the LCD.
+- Release asset `lcd_ticker.zip` for manual and HACS installs.

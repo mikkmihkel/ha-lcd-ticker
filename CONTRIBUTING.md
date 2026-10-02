@@ -33,10 +33,14 @@ Rules for changes:
 
 Never release without the maintainer's go-ahead.
 
-1. Bump `version` in `manifest.json` and update `CHANGELOG.md` in a pull request.
+1. Bump `version` in `manifest.json` and update `CHANGELOG.md` in a pull request. Rename
+   the `## [Unreleased]` section to `## [X.Y.Z] - date` and add a new empty
+   `## [Unreleased]` above it before tagging; the release notes are read from the
+   `## [X.Y.Z]` section.
 2. After merging, push the tag `vX.Y.Z`. The `manifest.json` version must equal the tag.
-3. `release.yml` runs the tests and validation, then runs `gh release create` with that
-   CHANGELOG section.
+3. `release.yml` runs lint, format, the translations check and the tests, builds
+   `lcd_ticker.zip` from `custom_components/lcd_ticker/`, then runs `gh release create`
+   with that CHANGELOG section and the zip.
 
 Versions follow SemVer. `0.1.0` is the first public pre-release, after hardware checks H1
 to H8 pass. `1.0.0` follows the H9 soak test and at least one other tester. See
@@ -54,7 +58,7 @@ Set these by hand in GitHub:
 
 ## CI policy
 
-- Every `uses:` in a workflow is pinned to a 40-character commit SHA with a `# vX.Y.Z` comment.
+- Every `uses:` in a workflow is pinned to a 40-character commit SHA with a `# vX.Y.Z` comment, or `# <branch> <date>` for actions without releases.
 - Workflows set `permissions: {}`, with job-level grants only where needed.
 - No `pull_request_target`.
 - Dev dependencies are pinned exactly in `requirements_test.txt`.

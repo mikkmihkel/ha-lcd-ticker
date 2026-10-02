@@ -130,7 +130,7 @@ has a fallback in case the check fails.
 | H4 | Big number: one decimal up to 199.5, integer above, clamps at 1999.5 and −99.5 (source says yes) | rendering decimals | adjust clamps |
 | H5 | What each of the 8 unit codes and 8 smiley values looks like (photo table) | marker and face picker labels, README | hide values that look broken |
 | H6 | Finite validity expires on time without any time sync | finite validity | send `0x23` before finite-validity frames |
-| H7 | BTHome battery appears on the same HA device page | battery display | link to the BTHome device in docs |
+| H7 | BTHome device exists for the same MAC; README tells users the battery is on that device | battery display | document where the battery appears |
 | H8 | Write-without-response followed by an immediate disconnect is reliable over 50 writes | BLE layer | add a 0.5 s delay before disconnecting |
 | H9 | Two-week soak at Balanced, battery % logged daily | profile defaults, README battery guide | adjust profiles |
 
@@ -367,9 +367,10 @@ without blocking, when a new screen's markers are identical to an existing scree
 
 ## 7. Entities and actions
 
-The device has `connections = {(CONNECTION_BLUETOOTH, address)}`, so the BTHome device
-for the same MAC can merge onto the same device page (H7). The model is "LYWSD03MMC
-(pvvx)". There are no per-screen entities in v1.
+The device has `connections = {(CONNECTION_BLUETOOTH, address)}`. Home Assistant 2026.9
+keeps one device per config entry, so the BTHome device for the same MAC does not merge
+onto it. It stays a separate device, and the README tells users the battery is on that
+one (H7). The model is "LYWSD03MMC (pvvx)". There are no per-screen entities in v1.
 
 | Platform | Entity | Notes |
 |---|---|---|
