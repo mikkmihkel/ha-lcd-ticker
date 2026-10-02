@@ -1,0 +1,28 @@
+{
+  "services": {
+    "show": {
+      "service": "mdi:monitor-shimmer"
+    }
+  },
+  "entity": {
+    "switch": {
+      "rotation": { "default": "mdi:rotate-right" }
+    },
+    "select": {
+      "mode": { "default": "mdi:view-carousel" },
+      "screen": { "default": "mdi:monitor" }
+    },
+    "number": {
+      "seconds_per_screen": { "default": "mdi:timer-outline" },
+      "seconds_per_screen_present": { "default": "mdi:timer-fast-outline" }
+    },
+    "button": {
+      "refresh": { "default": "mdi:refresh" }
+    },
+    "sensor": {
+      "updates_last_hour": { "default": "mdi:bluetooth-transfer" },
+      "estimated_updates_per_hour": { "default": "mdi:battery-clock" },
+      "last_error": { "default": "mdi:alert-circle-outline" }
+    }
+  }
+}

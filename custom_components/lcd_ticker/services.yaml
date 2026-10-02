@@ -1,0 +1,68 @@
+show:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: lcd_ticker
+    address:
+      selector:
+        text:
+    big:
+      default: 0
+      selector:
+        number:
+          min: -99.5
+          max: 1999.5
+          step: 0.1
+          mode: box
+    small:
+      default: 0
+      selector:
+        number:
+          min: -9
+          max: 99
+          step: 1
+          mode: box
+    validity:
+      default: 900
+      selector:
+        number:
+          min: 1
+          max: 65535
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    unit:
+      default: none
+      selector:
+        select:
+          translation_key: unit
+          options:
+            - none
+            - deg_ghe
+            - minus
+            - deg_f
+            - lowdash
+            - deg_c
+            - lines
+            - deg_e
+    percent:
+      default: false
+      selector:
+        boolean:
+    battery:
+      default: false
+      selector:
+        boolean:
+    happy:
+      default: false
+      selector:
+        boolean:
+    sad:
+      default: false
+      selector:
+        boolean:
+    bracket:
+      default: false
+      selector:
+        boolean:
