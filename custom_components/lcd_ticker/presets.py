@@ -1,4 +1,4 @@
-"""Preset defaults, form fields and validation for screens. Pure: no I/O."""
+"""Screen defaults, form fields and validation. Pure: no I/O."""
 
 from __future__ import annotations
 
@@ -36,30 +36,18 @@ from .const import (
     CONF_SMALL_OFFSET,
     CONF_SMALL_SOURCE,
     CONF_TAKEOVER,
-    CONF_TITLE,
     CONF_UNIT,
     CONF_VAT_PERCENT,
-    CONVERT_CELSIUS,
-    CONVERT_CENTS_KWH,
-    CONVERT_FAHRENHEIT,
     CONVERT_KW,
     CONVERT_NONE,
     DECIMALS_AUTO,
     DIRECTION_HIGHER,
-    DIRECTION_LOWER,
-    DIRECTION_MIDDLE,
     FACE_MODE_NONE,
     FACE_MODE_SCALE,
     FACE_SOURCE_BIG,
-    FACE_SOURCE_SMALL,
     MIN_SECONDS,
-    PRESET_CLIMATE,
     PRESET_CUSTOM,
-    PRESET_PRICE,
-    PRESET_SINGLE,
-    PRESET_SOLAR,
     SMALL_ENTITY,
-    SMALL_FIXED,
     SMALL_NONE,
     SMALL_SELF_CONSUMPTION,
 )
@@ -100,109 +88,20 @@ BASE_SCREEN: dict[str, Any] = {
     CONF_FACE_T4: 80.0,
 }
 
-_PRESET_OVERRIDES: dict[str, dict[str, Any]] = {
-    PRESET_SOLAR: {
-        CONF_BIG_CONVERT: CONVERT_KW,
-        CONF_SMALL_SOURCE: SMALL_SELF_CONSUMPTION,
-        CONF_PERCENT: True,
-        CONF_FACE_MODE: FACE_MODE_SCALE,
-        CONF_FACE_SOURCE: FACE_SOURCE_SMALL,
-        CONF_FACE_DIRECTION: DIRECTION_HIGHER,
-        CONF_FACE_T1: 20.0,
-        CONF_FACE_T2: 40.0,
-        CONF_FACE_T3: 60.0,
-        CONF_FACE_T4: 80.0,
-    },
-    PRESET_CLIMATE: {
-        CONF_BIG_CONVERT: CONVERT_CELSIUS,
-        CONF_UNIT: "deg_c",
-        CONF_SMALL_SOURCE: SMALL_ENTITY,
-        CONF_PERCENT: True,
-        CONF_FACE_MODE: FACE_MODE_SCALE,
-        CONF_FACE_SOURCE: FACE_SOURCE_SMALL,
-        CONF_FACE_DIRECTION: DIRECTION_MIDDLE,
-        CONF_FACE_T1: 30.0,
-        CONF_FACE_T2: 40.0,
-        CONF_FACE_T3: 60.0,
-        CONF_FACE_T4: 70.0,
-    },
-    PRESET_PRICE: {
-        CONF_BIG_CONVERT: CONVERT_CENTS_KWH,
-        CONF_SMALL_CONVERT: CONVERT_CENTS_KWH,
-        CONF_FACE_MODE: FACE_MODE_SCALE,
-        CONF_FACE_SOURCE: FACE_SOURCE_BIG,
-        CONF_FACE_DIRECTION: DIRECTION_LOWER,
-        CONF_FACE_T1: 5.0,
-        CONF_FACE_T2: 10.0,
-        CONF_FACE_T3: 15.0,
-        CONF_FACE_T4: 20.0,
-    },
-    PRESET_SINGLE: {CONF_SMALL_SOURCE: SMALL_FIXED},
-    PRESET_CUSTOM: {},
-}
-
-_BIG_CONVERSION = (
-    CONF_BIG_CONVERT,
+# Fields in the Advanced section of the check step. The simple form holds the
+# name, big_entity, unit, small_entity and percent.
+ADVANCED_FIELDS: tuple[str, ...] = (
     CONF_BIG_MULTIPLIER,
     CONF_BIG_OFFSET,
     CONF_BIG_DECIMALS,
-)
-
-_SMALL_CONVERSION = (CONF_SMALL_CONVERT, CONF_SMALL_MULTIPLIER, CONF_SMALL_OFFSET)
-
-# preset -> fields shown in the "sources" step
-SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
-    PRESET_SOLAR: (
-        CONF_BIG_ENTITY,
-        *_BIG_CONVERSION,
-        CONF_EXPORT_ENTITY,
-        CONF_SMALL_ENTITY,
-        *_SMALL_CONVERSION,
-    ),
-    PRESET_CLIMATE: (
-        CONF_BIG_ENTITY,
-        *_BIG_CONVERSION,
-        CONF_SMALL_ENTITY,
-        *_SMALL_CONVERSION,
-    ),
-    PRESET_PRICE: (
-        CONF_BIG_ENTITY,
-        *_BIG_CONVERSION,
-        CONF_VAT_PERCENT,
-        CONF_SMALL_ENTITY,
-        *_SMALL_CONVERSION,
-    ),
-    PRESET_SINGLE: (
-        CONF_BIG_ENTITY,
-        CONF_BIG_CONVERT,
-        CONF_BIG_MULTIPLIER,
-        CONF_BIG_OFFSET,
-        CONF_BIG_DECIMALS,
-    ),
-    PRESET_CUSTOM: (
-        CONF_BIG_ENTITY,
-        CONF_BIG_CONVERT,
-        CONF_BIG_MULTIPLIER,
-        CONF_BIG_OFFSET,
-        CONF_BIG_DECIMALS,
-        CONF_VAT_PERCENT,
-        CONF_SMALL_SOURCE,
-        CONF_SMALL_ENTITY,
-        CONF_SMALL_CONVERT,
-        CONF_SMALL_MULTIPLIER,
-        CONF_SMALL_OFFSET,
-        CONF_SMALL_FIXED,
-        CONF_PRODUCTION_ENTITY,
-        CONF_EXPORT_ENTITY,
-    ),
-}
-
-# Fields shown in the "look" step (all presets)
-LOOK_FIELDS: tuple[str, ...] = (
-    CONF_TITLE,
-    CONF_UNIT,
-    CONF_PERCENT,
-    CONF_BATTERY,
+    CONF_BIG_CONVERT,
+    CONF_VAT_PERCENT,
+    CONF_SMALL_MULTIPLIER,
+    CONF_SMALL_OFFSET,
+    CONF_SMALL_CONVERT,
+    CONF_SMALL_SOURCE,
+    CONF_SMALL_FIXED,
+    CONF_EXPORT_ENTITY,
     CONF_FACE_MODE,
     CONF_FACE_FIXED,
     CONF_FACE_SOURCE,
@@ -211,73 +110,19 @@ LOOK_FIELDS: tuple[str, ...] = (
     CONF_FACE_T2,
     CONF_FACE_T3,
     CONF_FACE_T4,
+    CONF_BATTERY,
+    CONF_SHOW_WHEN,
+    CONF_TAKEOVER,
     CONF_POSITION,
     CONF_SCREEN_SECONDS,
     CONF_JUMP_DELTA,
     CONF_SCREEN_ENABLED,
-    CONF_SHOW_WHEN,
-    CONF_TAKEOVER,
 )
 
-_ENTITY_FIELDS = (
-    CONF_BIG_ENTITY,
-    CONF_SMALL_ENTITY,
-    CONF_PRODUCTION_ENTITY,
-    CONF_EXPORT_ENTITY,
-)
 
-_TITLES = {
-    PRESET_SOLAR: "Solar",
-    PRESET_CLIMATE: "Climate",
-    PRESET_PRICE: "Price",
-    PRESET_SINGLE: "Value",
-    PRESET_CUSTOM: "Custom",
-}
-
-
-def new_screen_data(preset: str, position: int) -> dict[str, Any]:
-    """Return a fresh screen: BASE_SCREEN plus the preset's overrides."""
-    data = dict(BASE_SCREEN)
-    data.update(_PRESET_OVERRIDES[preset])
-    if preset == PRESET_SINGLE:
-        data[CONF_SMALL_FIXED] = position
-    data[CONF_PRESET] = preset
-    data[CONF_POSITION] = position
-    return data
-
-
-def apply_sources(
-    preset: str, data: Mapping[str, Any], user_input: Mapping[str, Any]
-) -> dict[str, Any]:
-    """Merge the sources step's input and derive the preset's hidden fields."""
-    result = {**data, **user_input}
-    for key in SOURCE_FIELDS[preset]:
-        if key in _ENTITY_FIELDS and key not in user_input:
-            result[key] = None
-
-    if preset == PRESET_SOLAR:
-        result[CONF_PRODUCTION_ENTITY] = result.get(CONF_BIG_ENTITY)
-        if result.get(CONF_SMALL_ENTITY):
-            result[CONF_SMALL_SOURCE] = SMALL_ENTITY
-        elif result.get(CONF_EXPORT_ENTITY):
-            result[CONF_SMALL_SOURCE] = SMALL_SELF_CONSUMPTION
-    elif preset == PRESET_CLIMATE:
-        has_small = bool(result.get(CONF_SMALL_ENTITY))
-        result[CONF_SMALL_SOURCE] = SMALL_ENTITY if has_small else SMALL_NONE
-        result[CONF_PERCENT] = has_small
-        if not has_small and result.get(CONF_FACE_SOURCE) == FACE_SOURCE_SMALL:
-            result[CONF_FACE_MODE] = FACE_MODE_NONE  # no humidity, nothing to judge
-        convert = result.get(CONF_BIG_CONVERT)
-        if convert == CONVERT_FAHRENHEIT:
-            result[CONF_UNIT] = "deg_f"
-        elif convert == CONVERT_CELSIUS:
-            result[CONF_UNIT] = "deg_c"
-        else:
-            result[CONF_UNIT] = "none"
-    elif preset == PRESET_PRICE:
-        has_small = bool(result.get(CONF_SMALL_ENTITY))
-        result[CONF_SMALL_SOURCE] = SMALL_ENTITY if has_small else SMALL_NONE
-    return result
+def new_screen_data(position: int) -> dict[str, Any]:
+    """Return a fresh screen: BASE_SCREEN at the given position."""
+    return {**BASE_SCREEN, CONF_POSITION: position}
 
 
 UnitDetails = dict[str, tuple[str | None, str]]
@@ -328,12 +173,10 @@ def validate_sources(
         errors[CONF_SMALL_ENTITY] = "small_entity_required"
 
     if small_source == SMALL_SELF_CONSUMPTION:
-        # In Solar the production entity is a hidden copy of big_entity, so report
-        # problems on big_entity, which the form shows.
+        # Production is big_entity unless a stored screen names another sensor.
         production_key = (
             CONF_PRODUCTION_ENTITY
-            if data.get(CONF_PRODUCTION_ENTITY)
-            and data.get(CONF_PRESET) != PRESET_SOLAR
+            if data.get(CONF_PRODUCTION_ENTITY) not in (None, data.get(CONF_BIG_ENTITY))
             else CONF_BIG_ENTITY
         )
         production = data.get(production_key)
@@ -349,12 +192,6 @@ def validate_sources(
             if entity_id:
                 _check_unit(errors, key, entity_id, CONVERT_KW, unit_of, details)
 
-    if (
-        data.get(CONF_PRESET) == PRESET_SOLAR
-        and not data.get(CONF_EXPORT_ENTITY)
-        and not data.get(CONF_SMALL_ENTITY)
-    ):
-        errors["base"] = "solar_small_required"
     return errors
 
 
@@ -373,11 +210,3 @@ def validate_look(data: Mapping[str, Any]) -> dict[str, str]:
         if not t1 <= t2 <= t3 <= t4:
             errors["base"] = "thresholds_order"
     return errors
-
-
-def default_title(preset: str, entity_name: str | None) -> str:
-    """Title suggested for a new screen."""
-    title = _TITLES[preset]
-    if entity_name:
-        return f"{title} · {entity_name}"
-    return title

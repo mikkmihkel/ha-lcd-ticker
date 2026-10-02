@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-03
+
+### Changed
+
+- Screen setup is one simple form with a preview. Pick the big number and its symbol, optionally a small number, then check what the LCD will show before saving.
+- Presets were removed.
+- Advanced options (multiplier, decimals, conversion, VAT, face, conditions and more) moved into a collapsed section on the check step. *Preview again* applies them and shows the result before saving.
+- Existing screens are unchanged. Editing one opens the same two steps with its settings filled in.
+
 ## [0.2.2] - 2026-10-03
 
 ### Fixed

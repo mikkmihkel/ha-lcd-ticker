@@ -108,83 +108,93 @@
         "reconfigure": "Edit screen"
       },
       "step": {
-        "user": {
-          "title": "Add a screen",
-          "description": "Start from a preset. You pick the entities next.",
+        "screen": {
+          "title": "Screen",
+          "description": "Pick what the LCD shows. You will see a preview next, and can change the multiplier, decimals, face and more there.",
           "data": {
-            "preset": "Preset"
-          }
-        },
-        "sources": {
-          "title": "Where the numbers come from",
-          "description": "The big number shows one decimal up to 199.5 and whole numbers up to 1999. The small number shows whole numbers from -9 to 99. Values outside are capped.",
-          "data": {
+            "title": "Name",
             "big_entity": "Big number",
-            "big_convert": "Convert big number to",
-            "big_multiplier": "Big number multiplier",
-            "big_offset": "Big number offset",
-            "big_decimals": "Big number decimals",
-            "vat_percent": "VAT %",
-            "small_source": "Small number shows",
+            "unit": "Symbol next to the big number",
             "small_entity": "Small number",
-            "small_convert": "Convert small number to",
-            "small_multiplier": "Small number multiplier",
-            "small_offset": "Small number offset",
-            "small_fixed": "Fixed small number",
-            "production_entity": "Solar production",
-            "export_entity": "Grid export"
+            "percent": "% sign next to the small number"
           },
           "data_description": {
-            "big_convert": "Converts using the sensor's own unit, for example W to kW or EUR/MWh to c/kWh.",
-            "vat_percent": "Added to prices converted to c/kWh. The core Nord Pool integration reports prices without VAT.",
-            "small_fixed": "A screen number helps you tell screens apart.",
-            "export_entity": "Self-consumption % = (production − export) / production.",
-            "small_entity": "Optional. For solar, pick an existing self-consumption % sensor instead of grid export.",
-            "small_convert": "How the small number is converted. Choose \"No conversion\" for humidity, percentages and other plain numbers."
+            "title": "Leave empty to use the name of the big number.",
+            "big_entity": "Any sensor, input number or number. The LCD shows one decimal up to 199.5 and whole numbers up to 1999.",
+            "unit": "The LCD cannot show text, so a symbol helps you tell screens apart.",
+            "small_entity": "Optional. Shows whole numbers from -9 to 99; values outside are capped.",
+            "percent": "Show the % sign next to the small number."
           }
         },
-        "look": {
-          "title": "How the screen looks",
-          "description": "The LCD cannot show text, so give each screen something unique: a unit symbol, the % sign, the battery icon, a face or a fixed small number.\n\n**Right now this screen shows:** {preview}",
+        "check": {
+          "title": "Check what the LCD will show",
+          "description": "{preview}\n\nOpen **Advanced** to change the multiplier, decimals, face and more. Tick **Preview again** to check your changes before saving.",
           "data": {
-            "title": "Screen name",
-            "unit": "Symbol next to the big number",
-            "percent": "% sign next to the small number",
-            "battery": "Battery icon",
-            "face_mode": "Face",
-            "face_fixed": "Fixed face",
-            "face_source": "Face follows",
-            "face_direction": "Direction",
-            "face_t1": "Threshold 1",
-            "face_t2": "Threshold 2",
-            "face_t3": "Threshold 3",
-            "face_t4": "Threshold 4",
-            "position": "Position in rotation",
-            "seconds": "Seconds on screen",
-            "jump_delta": "Show immediately when the big number changes by",
-            "enabled": "Enabled",
-            "show_when_entity": "Only show while this is on",
-            "takeover": "Show only this screen while it is on"
+            "preview_again": "Preview again"
           },
-          "data_description": {
-            "face_t1": "Scale faces, best to worst: (^_^) · ^_^ · Δ△Δ · -∧- · (-∧-). Higher is better: a value at or above threshold 4 gets the best face. Lower is better: a value at or below threshold 1 does. Middle is best (for example humidity): between thresholds 2 and 3 gets (^_^), between 1 and 2 or 3 and 4 gets Δ△Δ, and outside thresholds 1 to 4 gets (-∧-).",
-            "seconds": "0 uses the thermometer's speed.",
-            "jump_delta": "0 turns this off. Never writes more than once a minute.",
-            "show_when_entity": "Optional. For example a Threshold helper \"sauna above 40 °C\" or a Schedule helper for daytime. Counts as on when its state is on, home or above_horizon.",
-            "takeover": "While the entity above is on, rotation shows only this screen (and other take-over screens that are on)."
+          "sections": {
+            "advanced": {
+              "name": "Advanced",
+              "data": {
+                "big_multiplier": "Big number multiplier",
+                "big_offset": "Big number offset",
+                "big_decimals": "Big number decimals",
+                "big_convert": "Convert big number to",
+                "vat_percent": "VAT %",
+                "small_multiplier": "Small number multiplier",
+                "small_offset": "Small number offset",
+                "small_convert": "Convert small number to",
+                "small_source": "Small number shows",
+                "small_fixed": "Fixed small number",
+                "export_entity": "Grid export",
+                "face_mode": "Face",
+                "face_fixed": "Fixed face",
+                "face_source": "Face follows",
+                "face_direction": "Direction",
+                "face_t1": "Threshold 1",
+                "face_t2": "Threshold 2",
+                "face_t3": "Threshold 3",
+                "face_t4": "Threshold 4",
+                "battery": "Battery icon",
+                "show_when_entity": "Only show while this is on",
+                "takeover": "Show only this screen while it is on",
+                "position": "Position in rotation",
+                "seconds": "Seconds on screen",
+                "jump_delta": "Show immediately when the big number changes by",
+                "enabled": "Enabled"
+              },
+              "data_description": {
+                "big_multiplier": "For example 100 turns EUR/kWh into cents; 124 also adds 24 % VAT.",
+                "big_offset": "Added after the multiplier.",
+                "big_decimals": "Automatic shows one decimal up to 199.5 and whole numbers above.",
+                "big_convert": "Converts using the sensor's own unit, for example W to kW or EUR/MWh to c/kWh.",
+                "vat_percent": "Added to prices converted to c/kWh. The core Nord Pool integration reports prices without VAT.",
+                "small_multiplier": "Same as for the big number. The small number shows whole numbers from -9 to 99.",
+                "small_offset": "Added after the multiplier.",
+                "small_convert": "How the small number is converted. Choose \"No conversion\" for humidity, percentages and other plain numbers.",
+                "small_source": "Normally set by the Small number picker on the previous screen. Self-consumption uses the big number as solar production.",
+                "small_fixed": "A screen number helps you tell screens apart.",
+                "export_entity": "Self-consumption % = (production − export) / production.",
+                "face_t1": "Scale faces, best to worst: (^_^) · ^_^ · Δ△Δ · -∧- · (-∧-). Higher is better: a value at or above threshold 4 gets the best face. Lower is better: a value at or below threshold 1 does. Middle is best (for example humidity): between thresholds 2 and 3 gets (^_^), between 1 and 2 or 3 and 4 gets Δ△Δ, and outside thresholds 1 to 4 gets (-∧-).",
+                "show_when_entity": "Optional. For example a Threshold helper \"sauna above 40 °C\" or a Schedule helper for daytime. Counts as on when its state is on, home or above_horizon.",
+                "takeover": "While the entity above is on, rotation shows only this screen (and other take-over screens that are on).",
+                "seconds": "0 uses the thermometer's speed.",
+                "jump_delta": "0 turns this off. Never writes more than once a minute."
+              }
+            }
           }
         }
       },
       "error": {
-        "unit_not_supported": "This sensor reports \"{unit}\", which can't be converted to {target}. Change the conversion for this number (or choose \"No conversion\"), or pick another sensor.",
-        "unit_unknown": "This sensor has no unit yet, so it can't be converted to {target}. Choose \"No conversion\" for this number, or wait until the sensor reports a value.",
-        "solar_small_required": "Pick either grid export or a self-consumption % sensor.",
-        "small_entity_required": "Pick the entity for the small number.",
-        "production_required": "Pick the solar production sensor.",
-        "thresholds_order": "Thresholds must go from lowest (1) to highest (4).",
+        "unit_not_supported": "A number uses a sensor that reports \"{unit}\", which can't be converted to {target}. Open Advanced and change the conversion (or choose \"No conversion\"), or cancel and pick another sensor.",
+        "unit_unknown": "A number uses a sensor with no unit yet, so it can't be converted to {target}. Open Advanced and choose \"No conversion\" for it, or wait until the sensor reports a value.",
+        "solar_small_required": "Self-consumption needs a grid export sensor. Pick one under Advanced, or choose another option for the small number.",
+        "small_entity_required": "The small number is set to \"An entity\", but none is picked. Choose another option under Advanced, or cancel and pick a small number first.",
+        "production_required": "Self-consumption uses the big number as solar production. Pick a big number first.",
+        "thresholds_order": "Face thresholds must go from lowest (1) to highest (4).",
         "duplicate_markers": "Another screen looks exactly like this one on the LCD. Submit again to keep it anyway.",
-        "seconds_too_short": "Use 0 (thermometer speed) or at least 30 seconds.",
-        "takeover_needs_entity": "Pick an entity under \"Only show while this is on\" to use take-over."
+        "seconds_too_short": "Seconds on screen: use 0 (thermometer speed) or at least 30 seconds.",
+        "takeover_needs_entity": "To use take-over, pick an entity under \"Only show while this is on\"."
       },
       "abort": {
         "reconfigure_successful": "Re-configuration was successful"
@@ -217,15 +227,6 @@
       "options": {
         "freeze": "Freeze the last screen",
         "alternate": "Alternate with the built-in reading"
-      }
-    },
-    "preset": {
-      "options": {
-        "solar": "Solar: kW and self-consumption %",
-        "climate": "Room climate: °C and humidity %",
-        "price": "Electricity price: c/kWh",
-        "single": "Single value",
-        "custom": "Custom"
       }
     },
     "convert": {

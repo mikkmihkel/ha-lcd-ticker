@@ -67,7 +67,6 @@ from .const import (
     CONF_PERCENT,
     CONF_POSITION,
     CONF_PRESENCE_ENTITY,
-    CONF_PRESET,
     CONF_PRODUCTION_ENTITY,
     CONF_PROFILE,
     CONF_QUIET_END,
@@ -87,10 +86,6 @@ from .const import (
     CONF_TITLE,
     CONF_UNIT,
     CONF_VAT_PERCENT,
-    CONVERT_CELSIUS,
-    CONVERT_CENTS_KWH,
-    CONVERT_FAHRENHEIT,
-    CONVERT_KW,
     CONVERT_OPTIONS,
     DECIMALS_OPTIONS,
     DEFAULT_NAME_PREFIX,
@@ -103,12 +98,12 @@ from .const import (
     MAX_SECONDS,
     MIN_SECONDS,
     MODES,
-    PRESET_SOLAR,
-    PRESETS_ORDER,
     PROFILE_BALANCED,
     PROFILE_CUSTOM,
     PROFILE_OPTIONS,
     PROFILES,
+    SMALL_ENTITY,
+    SMALL_NONE,
     SMALL_SOURCE_OPTIONS,
     SUBENTRY_SCREEN,
     VALIDITY_TEST,
@@ -116,17 +111,20 @@ from .const import (
     default_options,
 )
 from .presets import (
+    ADVANCED_FIELDS,
     BASE_SCREEN,
-    LOOK_FIELDS,
-    SOURCE_FIELDS,
-    apply_sources,
-    default_title,
     new_screen_data,
     validate_look,
     validate_sources,
 )
 from .protocol import FACE_KEYS, UNIT_KEYS, DisplayFrame, Face, build_ext_frame
-from .render import SourceValue, describe_screen, markers, screen_entity_ids
+from .render import (
+    TARGET_LABELS,
+    SourceValue,
+    describe_screen,
+    markers,
+    screen_entity_ids,
+)
 from .scheduler import estimate_updates_per_hour
 
 _LOGGER = logging.getLogger(__name__)
@@ -165,6 +163,11 @@ _SCALING_FIELDS = (
     CONF_SMALL_OFFSET,
 )
 MAX_SCALING = 100000
+
+ADVANCED = "advanced"
+PREVIEW_AGAIN = "preview_again"
+# Advanced fields that a cleared picker removes; any other missing field is kept.
+_CLEARABLE = (CONF_SHOW_WHEN, CONF_EXPORT_ENTITY)
 
 # Options form sections (name -> option keys); stored options stay flat.
 _SECTIONS = {
@@ -226,15 +229,6 @@ def _seconds(minimum: int) -> NumberSelector:
     )
 
 
-# Shown in unit errors: what the field is converted to.
-_TARGET_LABELS = {
-    CONVERT_KW: "kW",
-    CONVERT_CELSIUS: "°C",
-    CONVERT_FAHRENHEIT: "°F",
-    CONVERT_CENTS_KWH: "cents per kWh",
-}
-
-
 def _one_unit_error(
     errors: dict[str, str], details: dict[str, tuple[str | None, str]]
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -251,16 +245,16 @@ def _one_unit_error(
         }
         return kept, {
             "unit": unit or "no unit",
-            "target": _TARGET_LABELS.get(target, target),
+            "target": TARGET_LABELS.get(target, target),
         }
     return errors, {"unit": "", "target": ""}
 
 
-def _screen_selector(key: str, preset: str) -> Any:
-    """Return the selector for one screen field (sources and look steps)."""
+def _screen_selector(key: str) -> Any:
+    """Return the selector for one screen field."""
     if key in (CONF_BIG_ENTITY, CONF_SMALL_ENTITY):
         return _entity(NUMERIC_DOMAINS)
-    if key in (CONF_PRODUCTION_ENTITY, CONF_EXPORT_ENTITY):
+    if key == CONF_EXPORT_ENTITY:
         return _entity(["sensor"])
     if key in (CONF_BIG_CONVERT, CONF_SMALL_CONVERT):
         return _select(CONVERT_OPTIONS, "convert")
@@ -310,6 +304,8 @@ def _screen_selector(key: str, preset: str) -> Any:
         return BooleanSelector()
     if key == CONF_TITLE:
         return TextSelector()
+    if key == PREVIEW_AGAIN:
+        return BooleanSelector()
     raise ValueError(f"No selector for {key}")  # pragma: no cover
 
 
@@ -601,11 +597,11 @@ class LcdTickerOptionsFlow(OptionsFlow):
 
 
 class ScreenSubentryFlow(ConfigSubentryFlow):
-    """Add or edit one screen."""
+    """Add or edit one screen: a simple form, then a check with Advanced options."""
 
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
-        self._title: str | None = None
+        self._title: str = ""
         self._warned = False
 
     def _screen_subentries(self) -> list[Any]:
@@ -627,24 +623,16 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        if user_input is not None:
-            position = (
-                max(
-                    (s.data.get(CONF_POSITION, 0) for s in self._screen_subentries()),
-                    default=0,
-                )
-                + 1
+        position = (
+            max(
+                (s.data.get(CONF_POSITION, 0) for s in self._screen_subentries()),
+                default=0,
             )
-            self._data = new_screen_data(user_input[CONF_PRESET], position)
-            return await self.async_step_sources()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_PRESET, default=PRESET_SOLAR): _select(
-                    PRESETS_ORDER, "preset"
-                )
-            }
+            + 1
         )
-        return self.async_show_form(step_id="user", data_schema=schema)
+        self._data = new_screen_data(position)
+        self._title = f"Screen {position}"
+        return await self.async_step_screen()
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -652,47 +640,97 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         self._data = {**BASE_SCREEN, **subentry.data}
         self._title = subentry.title
-        return await self.async_step_sources()
+        return await self.async_step_screen()
 
-    async def async_step_sources(
+    async def async_step_screen(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        preset = self._data[CONF_PRESET]
-        errors: dict[str, str] = {}
-        placeholders = {"unit": "", "target": ""}
-        suggested = {k: v for k, v in self._data.items() if v is not None}
         if user_input is not None:
-            suggested = dict(user_input)
-            data = apply_sources(preset, self._data, user_input)
-            data[CONF_SMALL_FIXED] = int(data[CONF_SMALL_FIXED])
-            details: dict[str, tuple[str | None, str]] = {}
-            errors = validate_sources(data, self._unit_of, details)
-            if not errors:
-                self._data = data
-                return await self.async_step_look()
-            errors, placeholders = _one_unit_error(errors, details)
+            self._apply_screen(user_input)
+            return await self.async_step_check()
 
-        fields: dict[Any, Any] = {}
-        for key in SOURCE_FIELDS[preset]:
-            marker = vol.Required if key == CONF_BIG_ENTITY else vol.Optional
-            fields[marker(key)] = _screen_selector(key, preset)
-        schema = self.add_suggested_values_to_schema(vol.Schema(fields), suggested)
+        big_entity = self._data[CONF_BIG_ENTITY]
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_TITLE, default=self._title): _screen_selector(
+                    CONF_TITLE
+                ),
+                vol.Required(
+                    CONF_BIG_ENTITY,
+                    **({"default": big_entity} if big_entity else {}),
+                ): _screen_selector(CONF_BIG_ENTITY),
+                vol.Required(
+                    CONF_UNIT, default=self._data[CONF_UNIT]
+                ): _screen_selector(CONF_UNIT),
+                vol.Optional(CONF_SMALL_ENTITY): _screen_selector(CONF_SMALL_ENTITY),
+                vol.Required(
+                    CONF_PERCENT, default=self._data[CONF_PERCENT]
+                ): _screen_selector(CONF_PERCENT),
+            }
+        )
+        small = self._data[CONF_SMALL_ENTITY]
+        suggested = (
+            {CONF_SMALL_ENTITY: small}
+            if small and self._data[CONF_SMALL_SOURCE] == SMALL_ENTITY
+            else {}
+        )
         return self.async_show_form(
-            step_id="sources",
-            data_schema=schema,
-            errors=errors,
-            description_placeholders=placeholders,
+            step_id="screen",
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
         )
 
-    def _default_title(self) -> str:
-        if self._title is not None:
-            return self._title
-        entity_id = self._data.get(CONF_BIG_ENTITY)
-        name = None
-        if entity_id:
-            state = self.hass.states.get(entity_id)
-            name = state.name if state is not None else entity_id
-        return default_title(self._data[CONF_PRESET], name)
+    def _apply_screen(self, user_input: Mapping[str, Any]) -> None:
+        """Merge the simple form into the screen; leave everything else alone."""
+        data = self._data
+        self._title = user_input[CONF_TITLE].strip()
+        old_big = data[CONF_BIG_ENTITY]
+        data[CONF_BIG_ENTITY] = user_input[CONF_BIG_ENTITY]
+        if old_big and data.get(CONF_PRODUCTION_ENTITY) == old_big:
+            data[CONF_PRODUCTION_ENTITY] = data[CONF_BIG_ENTITY]
+        data[CONF_UNIT] = user_input[CONF_UNIT]
+        data[CONF_PERCENT] = user_input[CONF_PERCENT]
+        if small := user_input.get(CONF_SMALL_ENTITY):
+            data[CONF_SMALL_ENTITY] = small
+            data[CONF_SMALL_SOURCE] = SMALL_ENTITY
+        elif data[CONF_SMALL_SOURCE] == SMALL_ENTITY:
+            data[CONF_SMALL_ENTITY] = None
+            data[CONF_SMALL_SOURCE] = SMALL_NONE
+
+    def _advanced_schema(self) -> vol.Schema:
+        fields: dict[Any, Any] = {
+            vol.Optional(key): _screen_selector(key) for key in ADVANCED_FIELDS
+        }
+        return vol.Schema(
+            {
+                vol.Required(ADVANCED): section(
+                    vol.Schema(fields), {"collapsed": True}
+                ),
+                vol.Optional(PREVIEW_AGAIN, default=False): _screen_selector(
+                    PREVIEW_AGAIN
+                ),
+            }
+        )
+
+    def _apply_advanced(self, advanced: Mapping[str, Any]) -> dict[str, Any]:
+        """The screen with the Advanced values applied (ints and floats cleaned)."""
+        data = {**self._data}
+        for key in ADVANCED_FIELDS:
+            if key in advanced:
+                data[key] = advanced[key]
+            elif key in _CLEARABLE:
+                data[key] = None
+        data[CONF_SHOW_WHEN] = data[CONF_SHOW_WHEN] or None
+        data[CONF_EXPORT_ENTITY] = data[CONF_EXPORT_ENTITY] or None
+        for key in _INT_FIELDS:
+            data[key] = int(data[key])
+        for key in _FLOAT_FIELDS:
+            data[key] = float(data[key])
+        return data
+
+    def _friendly_name(self) -> str:
+        entity_id = self._data[CONF_BIG_ENTITY]
+        state = self.hass.states.get(entity_id)
+        return state.name if state is not None else entity_id
 
     def _preview(self) -> str:
         """What the LCD would show right now for the screen set up so far."""
@@ -700,68 +738,75 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
         for entity_id in screen_entity_ids(self._data):
             if (state := self.hass.states.get(entity_id)) is not None:
                 values[entity_id] = SourceValue(
-                    state.state, state.attributes.get("unit_of_measurement")
+                    state.state,
+                    state.attributes.get("unit_of_measurement"),
+                    state.name,
                 )
         try:
             return describe_screen(self._data, values)
         except Exception:  # never break the form over a preview
-            return "nothing (the preview could not be calculated)"
+            return "Nothing (the preview could not be calculated)"
 
-    async def async_step_look(
+    def _check(self, data: dict[str, Any]) -> tuple[str | None, dict[str, str]]:
+        """Return (error code, placeholders) for the first problem, if any."""
+        details: dict[str, tuple[str | None, str]] = {}
+        errors = validate_sources(data, self._unit_of, details)
+        if errors:
+            errors, placeholders = _one_unit_error(errors, details)
+            return next(iter(errors.values())), placeholders
+        if errors := validate_look(data):
+            return next(iter(errors.values())), {}
+        if not self._warned:
+            others = [
+                s
+                for s in self._screen_subentries()
+                if self.source == SOURCE_USER
+                or s.subentry_id != self._get_reconfigure_subentry().subentry_id
+            ]
+            if any(markers(s.data) == markers(data) for s in others):
+                self._warned = True
+                return "duplicate_markers", {}
+        return None, {}
+
+    async def async_step_check(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        preset = self._data[CONF_PRESET]
         errors: dict[str, str] = {}
-        title_default = self._default_title()
+        placeholders = {"unit": "", "target": ""}
         if user_input is not None:
-            title_default = user_input.get(CONF_TITLE, title_default)
-            data = {**self._data}
-            for key in LOOK_FIELDS:
-                if key != CONF_TITLE and key in user_input:
-                    data[key] = user_input[key]
-            data[CONF_SHOW_WHEN] = user_input.get(CONF_SHOW_WHEN) or None
-            for key in _INT_FIELDS:
-                data[key] = int(data[key])
-            for key in _FLOAT_FIELDS:
-                data[key] = float(data[key])
-            errors = validate_look(data)
-            if not errors and not self._warned:
-                others = [
-                    s
-                    for s in self._screen_subentries()
-                    if self.source == SOURCE_USER
-                    or s.subentry_id != self._get_reconfigure_subentry().subentry_id
-                ]
-                if any(markers(s.data) == markers(data) for s in others):
-                    self._warned = True
-                    errors = {"base": "duplicate_markers"}
-            if not errors:
-                if self.source == SOURCE_USER:
-                    return self.async_create_entry(title=title_default, data=data)
-                return self.async_update_and_abort(
-                    self._get_entry(),
-                    self._get_reconfigure_subentry(),
-                    title=title_default,
-                    data=data,
-                )
+            data = self._apply_advanced(user_input.get(ADVANCED, {}))
             self._data = data
+            if not user_input.get(PREVIEW_AGAIN):
+                error, found = self._check(data)
+                if error is None:
+                    return self._save(data)
+                errors = {"base": error}
+                placeholders |= found
 
-        fields: dict[Any, Any] = {}
-        for key in LOOK_FIELDS:
-            if key == CONF_SHOW_WHEN:  # optional, so the picker can be cleared
-                fields[vol.Optional(key)] = _screen_selector(key, preset)
-                continue
-            default = title_default if key == CONF_TITLE else self._data[key]
-            fields[vol.Required(key, default=default)] = _screen_selector(key, preset)
         schema = self.add_suggested_values_to_schema(
-            vol.Schema(fields),
-            {CONF_SHOW_WHEN: self._data[CONF_SHOW_WHEN]}
-            if self._data[CONF_SHOW_WHEN]
-            else {},
+            self._advanced_schema(),
+            {
+                ADVANCED: {
+                    k: v
+                    for k, v in self._data.items()
+                    if k in ADVANCED_FIELDS and v is not None
+                }
+            },
         )
         return self.async_show_form(
-            step_id="look",
+            step_id="check",
             data_schema=schema,
             errors=errors,
-            description_placeholders={"preview": self._preview()},
+            description_placeholders={**placeholders, "preview": self._preview()},
+        )
+
+    def _save(self, data: dict[str, Any]) -> SubentryFlowResult:
+        title = self._title or self._friendly_name()
+        if self.source == SOURCE_USER:
+            return self.async_create_entry(title=title, data=data)
+        return self.async_update_and_abort(
+            self._get_entry(),
+            self._get_reconfigure_subentry(),
+            title=title,
+            data=data,
         )

@@ -55,7 +55,7 @@ async def setup_entry(hass: HomeAssistant, options=None, screens=0) -> MockConfi
         options=options or default_options(),
         subentries_data=[
             ConfigSubentryData(
-                data=new_screen_data("single", i + 1),
+                data=new_screen_data(i + 1),
                 subentry_type=SUBENTRY_SCREEN,
                 title=f"S{i}",
                 unique_id=None,

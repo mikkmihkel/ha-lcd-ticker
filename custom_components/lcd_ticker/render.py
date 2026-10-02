@@ -90,6 +90,7 @@ class SourceValue:
 
     state: str
     unit: str | None = None
+    name: str | None = None
 
 
 def parse_number(state: str | None) -> float | None:
@@ -208,29 +209,111 @@ _UNIT_SYMBOLS = {
 }
 
 
+# Shown in messages: what a field is converted to.
+TARGET_LABELS = {
+    CONVERT_KW: "kW",
+    CONVERT_CELSIUS: "\u00b0C",
+    CONVERT_FAHRENHEIT: "\u00b0F",
+    CONVERT_CENTS_KWH: "cents per kWh",
+}
+
+
+def _label(values: Mapping[str, SourceValue], entity_id: str | None) -> str:
+    source = values.get(entity_id)
+    if source is not None and source.name and source.name != entity_id:
+        return f"{source.name} ({entity_id})"
+    return str(entity_id)
+
+
+def _problem(
+    values: Mapping[str, SourceValue], entity_id: str | None, target: str
+) -> str | None:
+    """Why the entity can't be used for `target`, or None if it can."""
+    source = values.get(entity_id)
+    if source is None or parse_number(source.state) is None:
+        return f"{_label(values, entity_id)} is unavailable"
+    if not can_convert(source.unit, target):
+        unit = source.unit or "no unit"
+        return (
+            f'{_label(values, entity_id)}: can\'t convert "{unit}" '
+            f"to {TARGET_LABELS[target]}"
+        )
+    return None
+
+
+def _entity_line(
+    screen: Mapping[str, Any],
+    values: Mapping[str, SourceValue],
+    entity_key: str,
+    convert_key: str,
+    shown: str | None,
+) -> str:
+    """'Name (entity) = state unit -> shows value', or what is wrong with it."""
+    entity_id = screen.get(entity_key)
+    problem = _problem(values, entity_id, screen.get(convert_key, CONVERT_NONE))
+    if problem:
+        return problem
+    source = values[entity_id]
+    reading = f"{_label(values, entity_id)} = {source.state} {source.unit or ''}"
+    reading = reading.strip()
+    return f"{reading} \u2192 shows {shown}" if shown is not None else reading
+
+
+def _self_consumption_line(
+    screen: Mapping[str, Any],
+    values: Mapping[str, SourceValue],
+    frame: DisplayFrame | None,
+    percent: str,
+) -> str:
+    if frame is not None:
+        return f"{frame.small}{percent} (self-consumption)"
+    production = screen.get(CONF_PRODUCTION_ENTITY) or screen.get(CONF_BIG_ENTITY)
+    export = screen.get(CONF_EXPORT_ENTITY)
+    if not export:
+        return "no grid export sensor chosen (see Advanced)"
+    problems = [_problem(values, e, CONVERT_KW) for e in (production, export)]
+    return next((p for p in problems if p), "can't be calculated")
+
+
 def describe_screen(
     screen: Mapping[str, Any], values: Mapping[str, SourceValue]
 ) -> str:
-    """One line telling what the screen would show now, for the setup preview."""
-    source = values.get(screen.get(CONF_BIG_ENTITY))
-    raw = f"from {source.state} {source.unit or ''}".strip() if source else None
+    """Three lines telling what the screen would show now, for the setup preview."""
     frame = render(screen, values, 65535)
-    if frame is None:
-        parts = ["nothing (an entity is unavailable or its unit can't be converted)"]
+    # The big number does not depend on the small one, so show it either way.
+    big_frame = frame or render(
+        {**screen, CONF_SMALL_SOURCE: SMALL_NONE}, values, 65535
+    )
+    percent = "%" if screen.get(CONF_PERCENT) else ""
+
+    big_shown = None
+    if big_frame is not None:
+        big_shown = format_big(big_frame.big)
+        if symbol := _UNIT_SYMBOLS.get(screen.get(CONF_UNIT)):
+            big_shown += f" {symbol}"
+    big = _entity_line(screen, values, CONF_BIG_ENTITY, CONF_BIG_CONVERT, big_shown)
+
+    small_source = screen.get(CONF_SMALL_SOURCE, SMALL_NONE)
+    if small_source == SMALL_ENTITY:
+        shown = f"{frame.small}{percent}" if frame is not None else None
+        small = _entity_line(
+            screen, values, CONF_SMALL_ENTITY, CONF_SMALL_CONVERT, shown
+        )
+    elif small_source == SMALL_SELF_CONSUMPTION:
+        small = _self_consumption_line(screen, values, frame, percent)
+    elif small_source == SMALL_FIXED:
+        small = f"{screen.get(CONF_SMALL_FIXED, 0)}{percent}"
     else:
-        parts = [
-            f"big {format_big(frame.big)}",
-            f"small {frame.small}{'%' if frame.percent else ''}",
-        ]
-        if frame.battery:
-            parts.append("battery icon")
-        if (face := _FACE_SYMBOLS.get(frame.face.name.lower())) is not None:
-            parts.append(f"face {face}")
-        if (unit := _UNIT_SYMBOLS.get(frame.unit.name.lower())) is not None:
-            parts.append(unit)
-    if raw:
-        parts.append(raw)
-    return " \u00b7 ".join(parts)
+        small = f"0{percent}"
+
+    if screen.get(CONF_FACE_MODE, FACE_MODE_NONE) == FACE_MODE_NONE:
+        face = "No face"
+    elif frame is None:
+        face = "Face: can't tell yet"
+    else:
+        symbol = _FACE_SYMBOLS.get(frame.face.name.lower())
+        face = f"Face: {symbol}" if symbol else "No face"
+    return f"Big number: {big}\nSmall number: {small}\n{face}"
 
 
 def screen_entity_ids(screen: Mapping[str, Any]) -> list[str]:

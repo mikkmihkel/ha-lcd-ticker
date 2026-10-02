@@ -16,32 +16,32 @@ LCD Ticker shows any Home Assistant value on the LCD of a Xiaomi **LYWSD03MMC** 
 2. **Install LCD Ticker.** Use the HACS button above, then **Download** → restart Home Assistant. For a manual install, unzip `lcd_ticker.zip` from the [latest release](https://github.com/mikkmihkel/ha-lcd-ticker/releases) into `config/custom_components/lcd_ticker/` and restart.
 3. **Add the thermometer.** Go to **Settings → Devices & services**. It shows up as a discovered `ATC_xxxxxx`. If it doesn't, use **Add integration → LCD Ticker**.
 4. **Pick a battery profile.** A test smiley `(^_^)` appears on the LCD, which confirms the connection works.
-5. **Add screen.** Choose a preset, pick your entities, and save. The LCD updates within a few seconds.
+5. **Add a screen.** See [Add a screen](#add-a-screen). The LCD updates within a few seconds.
 
 You need Home Assistant **2026.3+** and Bluetooth that can make connections. A Raspberry Pi's built-in Bluetooth works, and so does an ESPHome Bluetooth proxy.
 
-## What you can show
+## Add a screen
 
-| Preset | Big number | Small number | Face |
-|---|---|---|---|
-| **Solar** | Production in kW | Self-consumption % | Happier the more you use yourself |
-| **Room climate** | Temperature °C | Humidity % | Happy while humidity is in the comfort range (40–60 %), sad when too dry or too humid |
-| **Electricity price** | Price in c/kWh, with VAT added | Optional, e.g. next price | Happy when cheap |
-| **Single value** | Any numeric entity | Screen number | Your choice |
-| **Custom** | Anything, with your own multiplier, offset and units | Anything | Your choice |
+On the thermometer, choose **Add screen**.
 
-Notes on the presets:
-- **Units convert automatically.** W becomes kW, °F becomes °C, and EUR/MWh becomes c/kWh.
-- **Nord Pool prices** from the built-in integration come without VAT. Set your VAT % on the price screen.
-- **For averages, minimums or sums**, create a *Min/Max* or *Statistics* helper in Home Assistant, then pick it as the screen's entity.
+1. **Pick the numbers.** Choose the big number and a symbol next to it (for example °C). Optionally choose a small number and tick the `%` sign.
+2. **Check the preview.** It shows each entity's name, its state, and what the LCD will show. Open **Advanced** if something needs changing: a multiplier, decimals, a unit conversion, VAT, a face, or conditions. Tick **Preview again** to see the result before saving.
+3. **Save.** Submit the form.
+
+Good to know:
+- **Values are shown as they are** until you change Advanced options. For prices, set the conversion to *Cents per kWh* and enter your VAT %. W to kW, °F to °C and EUR/MWh to c/kWh are handled by the conversion.
+- **For averages, minimums or sums**, create a *Min/Max* or *Statistics* helper in Home Assistant, then pick it as the big number.
+- **Solar self-consumption**: under Advanced, set *Small number shows* to *Solar self-consumption %* and pick your grid export sensor. The big number is the solar production.
 
 The LCD shows only digits and a few symbols, so give each screen a marker you'll recognise: a unit symbol (°C, °F, `-`, `_`, `=`), the `%` sign, the battery icon, or a face. You get a warning if two screens look identical.
 
+Screens made with earlier versions keep working. **Edit screen** opens the same two steps with your settings filled in.
+
 ## Examples
 
-1. **Sauna, only while it heats.** Create a *Threshold* helper called "Sauna heating" (sauna temperature above 40 °C). Add a **Single value** screen "Sauna" with the symbol °C and a fixed face. Set *Only show while this is on* to the threshold sensor and turn on *Show only this screen while it is on*, so the sauna temperature replaces the other screens until it cools down.
-2. **Home average.** Create two *Min/Max* helpers (type: mean), one from your temperature sensors and one from your humidity sensors, or use averages you already have (e.g. `sensor.home_average_temp` and `sensor.home_average_hum`). Add a **Room climate** screen with them. The face is happiest at 40–60 % humidity and sad below 30 % or above 70 %; adjust the four thresholds if you like.
-3. **Electricity price in the daytime.** Create a *Schedule* helper "Daytime". Add an **Electricity price** screen, set *Only show while this is on* to the schedule, and enter your VAT %.
+1. **Sauna, only while it heats.** Create a *Threshold* helper called "Sauna heating" (sauna temperature above 40 °C). Add a screen with the sauna temperature as the big number and the symbol °C. In Advanced, set *Face* to a fixed face, set *Only show while this is on* to the threshold sensor, and turn on *Show only this screen while it is on*, so the sauna temperature replaces the other screens until it cools down.
+2. **Home average.** Create two *Min/Max* helpers (type: mean), one from your temperature sensors and one from your humidity sensors, or use averages you already have (e.g. `sensor.home_average_temp` and `sensor.home_average_hum`). Add a screen with the temperature as the big number (symbol °C) and the humidity as the small number, with the `%` sign. In Advanced, set *Face* to *Depends on the value*, *Face follows* the small number, *Direction* to *Middle is best*, and thresholds 30, 40, 60 and 70. The face is happiest at 40-60 % humidity and sad below 30 % or above 70 %.
+3. **Electricity price in the daytime.** Create a *Schedule* helper "Daytime". Add a screen with your price sensor as the big number. In Advanced, set *Convert big number to* *Cents per kWh*, enter your VAT %, and set *Only show while this is on* to the schedule. Or, to skip the conversion, set the multiplier to 124 (cents plus 24 % VAT).
 
 Each screen's setup shows a **live preview** of what the LCD will display, including the raw value it converts from. The **Display** sensor shows what is on the LCD right now.
 

@@ -389,44 +389,111 @@ PRICE_SCREEN = {
 }
 
 
-def test_describe_screen_shows_value_symbols_and_source():
-    text = describe_screen(
-        PRICE_SCREEN, {"sensor.np": SourceValue("0.1234", "EUR/kWh")}
+def lines(screen, values):
+    return describe_screen(screen, values).split("\n")
+
+
+def test_describe_big_line_names_the_entity_state_and_lcd_value():
+    values = {"sensor.np": SourceValue("0.1234", "EUR/kWh", "Nord Pool")}
+    big, small, face = lines(PRICE_SCREEN, values)
+    assert (
+        big
+        == "Big number: Nord Pool (sensor.np) = 0.1234 EUR/kWh \u2192 shows 15.3 \u00b0C"
     )
-    assert "big 15.3" in text
-    assert "small 0" in text
-    assert "face \u0394\u25b3\u0394" in text
-    assert "\u00b0C" in text
-    assert "from 0.1234 EUR/kWh" in text
+    assert small == "Small number: 0"
+    assert face == "Face: \u0394\u25b3\u0394"
 
 
-def test_describe_screen_shows_percent_and_battery():
+def test_describe_uses_the_entity_id_when_there_is_no_name():
+    values = {"sensor.t": SourceValue("21.25", "\u00b0C")}
+    big = lines({"big_entity": "sensor.t"}, values)[0]
+    assert big == "Big number: sensor.t = 21.25 \u00b0C \u2192 shows 21.3"
+
+
+def test_describe_small_entity_and_percent():
     screen = {
         "big_entity": "sensor.t",
-        "small_source": "fixed",
-        "small_fixed": 55,
+        "small_source": "entity",
+        "small_entity": "sensor.h",
         "percent": True,
-        "battery": True,
     }
-    text = describe_screen(screen, {"sensor.t": SourceValue("5", None)})
-    assert "small 55%" in text
-    assert "battery icon" in text
+    values = {
+        "sensor.t": SourceValue("5", None),
+        "sensor.h": SourceValue("45.4", "%", "Humidity"),
+    }
+    small = lines(screen, values)[1]
+    assert small == "Small number: Humidity (sensor.h) = 45.4 % \u2192 shows 45%"
 
 
-def test_describe_screen_omits_none_parts():
-    screen = {"big_entity": "sensor.t"}
-    assert (
-        describe_screen(screen, {"sensor.t": SourceValue("5", None)})
-        == "big 5.0 \u00b7 small 0 \u00b7 from 5"
+def test_describe_fixed_none_and_no_face():
+    values = {"sensor.t": SourceValue("5", None)}
+    fixed = {"big_entity": "sensor.t", "small_source": "fixed", "small_fixed": 55}
+    assert lines(fixed, values)[1] == "Small number: 55"
+    assert lines(fixed | {"percent": True}, values)[1] == "Small number: 55%"
+    assert lines(fixed, values)[2] == "No face"
+    assert lines({"big_entity": "sensor.t"}, values)[1] == "Small number: 0"
+
+
+def test_describe_self_consumption():
+    screen = SOLAR | {"big_entity": "sensor.pv"}
+    values = {
+        "sensor.pv": SourceValue("2000", "W", "PV"),
+        "sensor.export": SourceValue("500", "W"),
+    }
+    big, small, face = lines(screen, values)
+    assert "PV (sensor.pv) = 2000 W \u2192 shows 2.0" in big
+    assert small == "Small number: 75% (self-consumption)"
+    assert face == "Face: ^_^"
+
+
+def test_describe_unavailable_source():
+    values = {"sensor.np": SourceValue("unavailable", None, "Nord Pool")}
+    big = lines(PRICE_SCREEN, values)[0]
+    assert big == "Big number: Nord Pool (sensor.np) is unavailable"
+    assert lines(PRICE_SCREEN, {})[0] == "Big number: sensor.np is unavailable"
+
+
+def test_describe_conversion_failure():
+    values = {"sensor.np": SourceValue("45", "%")}
+    big = lines(PRICE_SCREEN, values)[0]
+    assert big == 'Big number: sensor.np: can\'t convert "%" to cents per kWh'
+    values = {"sensor.np": SourceValue("45", None)}
+    assert 'can\'t convert "no unit"' in lines(PRICE_SCREEN, values)[0]
+
+
+def test_describe_small_failing_leaves_the_big_line_intact():
+    screen = {
+        "big_entity": "sensor.t",
+        "small_source": "entity",
+        "small_entity": "sensor.h",
+    }
+    values = {"sensor.t": SourceValue("5", None)}
+    big, small, _face = lines(screen, values)
+    assert big.endswith("\u2192 shows 5.0")
+    assert small == "Small number: sensor.h is unavailable"
+
+
+def test_describe_self_consumption_problems():
+    screen = SOLAR | {"big_entity": "sensor.pv"}
+    values = {
+        "sensor.pv": SourceValue("2000", "W"),
+        "sensor.export": SourceValue("1", "kWh"),
+    }
+    assert lines(screen, values)[1] == (
+        'Small number: sensor.export: can\'t convert "kWh" to kW'
+    )
+    values["sensor.export"] = SourceValue("unavailable", "W")
+    assert lines(screen, values)[1] == "Small number: sensor.export is unavailable"
+    assert lines(screen | {"export_entity": None}, values)[1].startswith(
+        "Small number: no grid export"
     )
 
 
-def test_describe_screen_nothing_when_unusable():
-    text = describe_screen(
-        PRICE_SCREEN, {"sensor.np": SourceValue("unavailable", None)}
-    )
-    assert text.startswith("nothing (an entity is unavailable")
-    assert describe_screen(PRICE_SCREEN, {}).startswith("nothing")
+def test_describe_face_unknown_while_a_number_is_missing():
+    screen = SOLAR | {"big_entity": "sensor.pv"}
+    values = {"sensor.pv": SourceValue("2000", "W")}
+    assert lines(screen, values)[2] == "Face: can't tell yet"
+    assert lines({"big_entity": "sensor.pv"}, {})[2] == "No face"
 
 
 @pytest.mark.parametrize("unit", ["senti/kWh", "sent/kWh", "¢/kWh", "cents/kWh"])
