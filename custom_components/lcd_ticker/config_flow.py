@@ -233,10 +233,27 @@ _TARGET_LABELS = {
     CONVERT_FAHRENHEIT: "°F",
     CONVERT_CENTS_KWH: "cents per kWh",
 }
-_CONVERT_FIELD = {
-    CONF_BIG_ENTITY: CONF_BIG_CONVERT,
-    CONF_SMALL_ENTITY: CONF_SMALL_CONVERT,
-}
+
+
+def _one_unit_error(
+    errors: dict[str, str], details: dict[str, tuple[str | None, str]]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Keep only the first unit error, so the shared {unit}/{target} text is right.
+
+    Home Assistant fills one set of placeholders for the whole form; the next unit
+    problem (if any) shows after this one is fixed.
+    """
+    for field, (unit, target) in details.items():
+        kept = {
+            key: code
+            for key, code in errors.items()
+            if key == field or key not in details
+        }
+        return kept, {
+            "unit": unit or "no unit",
+            "target": _TARGET_LABELS.get(target, target),
+        }
+    return errors, {"unit": "", "target": ""}
 
 
 def _screen_selector(key: str, preset: str) -> Any:
@@ -648,11 +665,12 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             suggested = dict(user_input)
             data = apply_sources(preset, self._data, user_input)
             data[CONF_SMALL_FIXED] = int(data[CONF_SMALL_FIXED])
-            errors = validate_sources(data, self._unit_of)
+            details: dict[str, tuple[str | None, str]] = {}
+            errors = validate_sources(data, self._unit_of, details)
             if not errors:
                 self._data = data
                 return await self.async_step_look()
-            placeholders = self._unit_placeholders(data, errors)
+            errors, placeholders = _one_unit_error(errors, details)
 
         fields: dict[Any, Any] = {}
         for key in SOURCE_FIELDS[preset]:
@@ -665,23 +683,6 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             errors=errors,
             description_placeholders=placeholders,
         )
-
-    def _unit_placeholders(
-        self, data: dict[str, Any], errors: dict[str, str]
-    ) -> dict[str, str]:
-        """Name the unit found and the conversion target for a unit error."""
-        for field, code in errors.items():
-            if code not in ("unit_not_supported", "unit_unknown"):
-                continue
-            entity_id = data.get(field) or data.get(CONF_BIG_ENTITY)
-            convert_key = _CONVERT_FIELD.get(field)
-            target = data.get(convert_key) if convert_key else CONVERT_KW
-            unit = self._unit_of(entity_id) if entity_id else None
-            return {
-                "unit": unit or "no unit",
-                "target": _TARGET_LABELS.get(target, str(target)),
-            }
-        return {"unit": "", "target": ""}
 
     def _default_title(self) -> str:
         if self._title is not None:

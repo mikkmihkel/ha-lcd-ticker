@@ -259,9 +259,6 @@ def apply_sources(
         result[CONF_PRODUCTION_ENTITY] = result.get(CONF_BIG_ENTITY)
         if result.get(CONF_SMALL_ENTITY):
             result[CONF_SMALL_SOURCE] = SMALL_ENTITY
-            result.setdefault(CONF_SMALL_CONVERT, CONVERT_NONE)
-            if CONF_SMALL_CONVERT not in user_input:
-                result[CONF_SMALL_CONVERT] = CONVERT_NONE
         elif result.get(CONF_EXPORT_ENTITY):
             result[CONF_SMALL_SOURCE] = SMALL_SELF_CONSUMPTION
     elif preset == PRESET_CLIMATE:
@@ -283,25 +280,39 @@ def apply_sources(
     return result
 
 
+UnitDetails = dict[str, tuple[str | None, str]]
+
+
 def _check_unit(
     errors: dict[str, str],
     field: str,
     entity_id: str,
     target: str,
     unit_of: Callable[[str], str | None],
+    details: UnitDetails,
 ) -> None:
     unit = unit_of(entity_id)
     if unit is None:
         errors[field] = "unit_unknown"
     elif not can_convert(unit, target):
         errors[field] = "unit_not_supported"
+    else:
+        return
+    details.setdefault(field, (unit, target))
 
 
 def validate_sources(
-    data: Mapping[str, Any], unit_of: Callable[[str], str | None]
+    data: Mapping[str, Any],
+    unit_of: Callable[[str], str | None],
+    details: UnitDetails | None = None,
 ) -> dict[str, str]:
-    """Return {field: error}, or {"base": error}; empty when valid."""
+    """Return {field: error}, or {"base": error}; empty when valid.
+
+    `details` (if given) receives {field: (unit found, conversion target)} for unit
+    errors, so the form can say exactly what is wrong.
+    """
     errors: dict[str, str] = {}
+    details = {} if details is None else details
     small_source = data.get(CONF_SMALL_SOURCE, SMALL_NONE)
 
     pairs = [(CONF_BIG_ENTITY, CONF_BIG_CONVERT)]
@@ -311,15 +322,18 @@ def validate_sources(
         entity_id = data.get(entity_key)
         convert = data.get(convert_key, CONVERT_NONE)
         if entity_id and convert != CONVERT_NONE:
-            _check_unit(errors, entity_key, entity_id, convert, unit_of)
+            _check_unit(errors, entity_key, entity_id, convert, unit_of, details)
 
     if small_source == SMALL_ENTITY and not data.get(CONF_SMALL_ENTITY):
         errors[CONF_SMALL_ENTITY] = "small_entity_required"
 
     if small_source == SMALL_SELF_CONSUMPTION:
+        # In Solar the production entity is a hidden copy of big_entity, so report
+        # problems on big_entity, which the form shows.
         production_key = (
             CONF_PRODUCTION_ENTITY
             if data.get(CONF_PRODUCTION_ENTITY)
+            and data.get(CONF_PRESET) != PRESET_SOLAR
             else CONF_BIG_ENTITY
         )
         production = data.get(production_key)
@@ -333,7 +347,7 @@ def validate_sources(
             (CONF_EXPORT_ENTITY, export),
         ):
             if entity_id:
-                _check_unit(errors, key, entity_id, CONVERT_KW, unit_of)
+                _check_unit(errors, key, entity_id, CONVERT_KW, unit_of, details)
 
     if (
         data.get(CONF_PRESET) == PRESET_SOLAR

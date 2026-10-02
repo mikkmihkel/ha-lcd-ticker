@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-03
+
+### Fixed
+
+- Solar: a production sensor in the wrong unit (for example kWh instead of W) returned the form with no message. The error now shows on the production field.
+- Unit errors always name the right unit and target (for self-consumption the target is kW), one problem at a time.
+
 ## [0.2.1] - 2026-10-03
 
 ### Fixed

@@ -509,3 +509,73 @@ async def test_solar_keeps_a_chosen_small_conversion(hass: HomeAssistant) -> Non
     assert result["type"] is FlowResultType.CREATE_ENTRY
     (sub,) = stored(entry)
     assert sub.data["small_convert"] == "kw"
+
+
+async def test_solar_production_unit_error_shows_on_a_visible_field(
+    hass: HomeAssistant,
+) -> None:
+    """The production entity is hidden in Solar; its error must land on big_entity."""
+    entry = await make_entry(hass)
+    hass.states.async_set("sensor.pv_energy", "12", {"unit_of_measurement": "kWh"})
+    result = await start(hass, entry, "solar")
+    result = await configure(
+        hass,
+        result,
+        {
+            CONF_BIG_ENTITY: "sensor.pv_energy",
+            "big_convert": "none",
+            "export_entity": "sensor.export",
+        },
+    )
+    assert result["errors"] == {CONF_BIG_ENTITY: "unit_not_supported"}
+    assert result["description_placeholders"] == {"unit": "kWh", "target": "kW"}
+
+
+async def test_self_consumption_error_names_kw_as_target(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "custom")
+    result = await configure(
+        hass,
+        result,
+        {
+            CONF_BIG_ENTITY: "sensor.hum",
+            "big_convert": "none",
+            "small_source": "self_consumption",
+            "export_entity": "sensor.export",
+        },
+    )
+    assert result["errors"] == {CONF_BIG_ENTITY: "unit_not_supported"}
+    assert result["description_placeholders"] == {"unit": "%", "target": "kW"}
+
+
+async def test_only_one_unit_error_at_a_time_so_the_message_is_right(
+    hass: HomeAssistant,
+) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await configure(
+        hass, result, {CONF_BIG_ENTITY: "sensor.hum", "small_entity": "sensor.temp"}
+    )
+    assert result["errors"] == {CONF_BIG_ENTITY: "unit_not_supported"}
+    assert result["description_placeholders"] == {
+        "unit": "%",
+        "target": "cents per kWh",
+    }
+
+
+async def test_reconfigure_a_screen_stored_by_0_2_0(hass: HomeAssistant) -> None:
+    old = {
+        k: v
+        for k, v in new_screen_data("price", 1).items()
+        if k not in ("small_multiplier", "small_offset")
+    }
+    old["big_entity"] = "sensor.price"
+    entry = await make_entry(hass, screens=[("Price", old)])
+    (sub,) = stored(entry)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_SCREEN),
+        context={"source": SOURCE_RECONFIGURE, "subentry_id": sub.subentry_id},
+    )
+    assert result["step_id"] == "sources"
+    result = await configure(hass, result, {CONF_BIG_ENTITY: "sensor.price"})
+    assert result["type"] is FlowResultType.ABORT
