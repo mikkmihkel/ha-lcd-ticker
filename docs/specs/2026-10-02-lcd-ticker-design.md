@@ -572,3 +572,43 @@ Kept at the user's request: the "If HA stops" option, per-screen "show immediate
 change", the duplicate-marker warning, both Repairs triggers (5 failures or 1 h), and the
 Estimated updates/hour and Last error diagnostic sensors.
 
+
+## 14. v0.2.0 additions (2026-10-02, from first use)
+
+### 14.1 The thermometer's own readings as sensors
+
+The thermometer keeps advertising its own measurements while it shows our values. LCD
+Ticker listens passively and adds them to its device, so a separate BTHome setup isn't
+needed. No connections are made, so this costs no battery.
+
+- `bluetooth.async_register_callback` with an address matcher in passive mode, using
+  non-connectable adverts too, so passive proxies work. `async_track_unavailable` marks
+  the readings unavailable.
+- Parsed formats:
+  - BTHome v2 unencrypted (service data `0000fcd2-…`)
+  - pvvx custom (`0000181a-…`, 15 bytes)
+  - ATC1441 (`0000181a-…`, 13 bytes)
+
+  Encrypted BTHome is ignored, and the README says so.
+- The parser lives in `advertisement.py`, is pure and table-tested, and never raises. An
+  unknown or truncated object stops parsing and returns what was read so far.
+- **Sensors:** Temperature (°C), Humidity (%), Battery (%), Voltage (V, diagnostic) and
+  Signal strength (dBm, diagnostic, disabled by default). They are created at setup and
+  stay unavailable until their first value arrives, and they use the HA device-class
+  names.
+
+### 14.2 Per-screen conditions
+
+- **"Only show while this is on"** (`show_when_entity`, optional): the screen is eligible
+  only while the entity is in `ACTIVE_STATES`. If the entity is missing or unavailable,
+  the screen is not eligible.
+- **"Show only this screen while it is on"** (`takeover`): while at least one eligible
+  screen has take-over set, only those screens rotate, and the built-in slot is skipped.
+  Take-over needs a condition entity.
+- **Change handling:**
+  - A take-over screen that becomes eligible is shown at the next allowed write, keeping
+    the 60 s gap.
+  - If the current screen becomes ineligible, the LCD moves on at the next allowed write.
+  - The Screen select still lists every enabled screen for manual use.
+- **Typical use:** a Threshold helper ("sauna above 40 °C") as a take-over condition, and a
+  Schedule helper ("daytime") for a price screen.

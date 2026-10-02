@@ -130,6 +130,8 @@ CONF_FACE_T1: Final = "face_t1"
 CONF_FACE_T2: Final = "face_t2"
 CONF_FACE_T3: Final = "face_t3"
 CONF_FACE_T4: Final = "face_t4"
+CONF_SHOW_WHEN: Final = "show_when_entity"  # None = always eligible
+CONF_TAKEOVER: Final = "takeover"  # while show_when is on, show only such screens
 FACE_THRESHOLD_KEYS: Final = (CONF_FACE_T1, CONF_FACE_T2, CONF_FACE_T3, CONF_FACE_T4)
 
 PRESET_SOLAR: Final = "solar"
@@ -192,6 +194,11 @@ SELF_CONSUMPTION_MIN_W: Final = 50
 def signal_update(entry_id: str) -> str:
     """Dispatcher signal sent when a scheduler's state changes."""
     return f"{DOMAIN}_{entry_id}_update"
+
+
+def signal_readings(entry_id: str) -> str:
+    """Dispatcher signal sent when the thermometer's own readings change."""
+    return f"{DOMAIN}_{entry_id}_readings"
 
 
 def default_options(profile: str = PROFILE_BALANCED) -> dict[str, Any]:

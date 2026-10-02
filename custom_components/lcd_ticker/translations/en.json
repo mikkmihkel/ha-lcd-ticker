@@ -161,12 +161,16 @@
             "position": "Position in rotation",
             "seconds": "Seconds on screen",
             "jump_delta": "Show immediately when the big number changes by",
-            "enabled": "Enabled"
+            "enabled": "Enabled",
+            "show_when_entity": "Only show while this is on",
+            "takeover": "Show only this screen while it is on"
           },
           "data_description": {
             "face_t1": "Scale faces, best to worst: (^_^) · ^_^ · Δ△Δ · -∧- · (-∧-). With higher is better, a value at or above threshold 4 gets the best face. With lower is better, a value at or below threshold 1 does.",
             "seconds": "0 uses the thermometer's speed.",
-            "jump_delta": "0 turns this off. Never writes more than once a minute."
+            "jump_delta": "0 turns this off. Never writes more than once a minute.",
+            "show_when_entity": "Optional. For example a Threshold helper \"sauna above 40 °C\" or a Schedule helper for daytime. Counts as on when its state is on, home or above_horizon.",
+            "takeover": "While the entity above is on, rotation shows only this screen (and other take-over screens that are on)."
           }
         }
       },
@@ -178,7 +182,8 @@
         "production_required": "Pick the solar production sensor.",
         "thresholds_order": "Thresholds must go from lowest (1) to highest (4).",
         "duplicate_markers": "Another screen looks exactly like this one on the LCD. Submit again to keep it anyway.",
-        "seconds_too_short": "Use 0 (thermometer speed) or at least 30 seconds."
+        "seconds_too_short": "Use 0 (thermometer speed) or at least 30 seconds.",
+        "takeover_needs_entity": "Pick an entity under \"Only show while this is on\" to use take-over."
       },
       "abort": {
         "reconfigure_successful": "Re-configuration was successful"
