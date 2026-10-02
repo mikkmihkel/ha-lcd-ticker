@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.3.0"
+    validations:
+      required: true
+  - type: input
+    id: ticker_version
+    attributes:
+      label: LCD Ticker version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: pvvx firmware version
+      placeholder: "5.7"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Thermometer hardware revision
+      placeholder: "B1.4"
+    validations:
+      required: true
+  - type: input
+    id: adapter
+    attributes:
+      label: Bluetooth adapter type
+      description: For example Raspberry Pi built-in, USB dongle, ESPHome Bluetooth proxy.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics download
+      description: On the device page choose Download diagnostics, then drag the file here. The MAC address is redacted.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from the Home Assistant log.
+      render: text
