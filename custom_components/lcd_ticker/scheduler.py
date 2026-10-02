@@ -564,6 +564,8 @@ class Scheduler:
         changed = active != self._active
         if changed:
             self._active = active
+            if active and self._outage_started_at is not None:
+                self._outage_started_at = now  # the outage clock paused while inactive
             self._schedule_at(self._earliest_write(now))
             self._notify()
         if active and self._outage_started_at is not None:
