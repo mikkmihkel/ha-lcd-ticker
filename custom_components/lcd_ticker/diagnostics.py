@@ -17,6 +17,8 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: LcdTickerConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics with the address redacted."""
+    readings = entry.runtime_data.readings
+    last_seen = readings.last_seen
     return {
         "entry": async_redact_data(
             {
@@ -30,4 +32,10 @@ async def async_get_config_entry_diagnostics(
             {"title": s.title, "data": dict(s.data)} for s in entry.subentries.values()
         ],
         "scheduler": entry.runtime_data.scheduler.diagnostics(),
+        "readings": {
+            "values": dict(readings.values),
+            "rssi": readings.rssi,
+            "last_seen": last_seen.isoformat() if last_seen else None,
+            "available": readings.available,
+        },
     }

@@ -50,6 +50,11 @@ ENTITIES = [
     ("sensor", "estimated_updates_per_hour"),
     ("sensor", "last_error"),
     ("binary_sensor", "reachable"),
+    ("sensor", "temperature"),
+    ("sensor", "humidity"),
+    ("sensor", "battery"),
+    ("sensor", "voltage"),
+    ("sensor", "signal_strength"),
 ]
 
 
@@ -57,6 +62,14 @@ async def test_setup_creates_entities(hass: HomeAssistant, setup_entry) -> None:
     assert setup_entry.state is ConfigEntryState.LOADED
     for platform, key in ENTITIES:
         entity_id(hass, platform, key)
+
+
+async def test_unload_stops_listening(
+    hass: HomeAssistant, setup_entry, bluetooth_mock
+) -> None:
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+    bluetooth_mock.unregister.assert_called_once()
+    bluetooth_mock.unregister_unavailable.assert_called_once()
 
 
 async def test_unload_stops_scheduler(

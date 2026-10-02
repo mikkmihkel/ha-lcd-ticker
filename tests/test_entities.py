@@ -7,7 +7,13 @@ from unittest.mock import AsyncMock, patch
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNKNOWN
+from homeassistant.const import (
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    EntityCategory,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
@@ -26,7 +32,7 @@ from custom_components.lcd_ticker.const import (
     RELOAD_DELAY,
 )
 
-from .conftest import FakeWriter
+from .conftest import ADVERT_A, ADVERT_B, FakeBluetooth, FakeWriter
 from .test_init import advance, entity_id
 
 
@@ -171,3 +177,88 @@ async def test_screen_select_vanished_slot(hass: HomeAssistant, setup_entry) -> 
             {"entity_id": eid, "option": "Power"},
             blocking=True,
         )
+
+
+READING_NAMES = {
+    "temperature": "Kitchen Temperature",
+    "humidity": "Kitchen Humidity",
+    "battery": "Kitchen Battery",
+    "voltage": "Kitchen Voltage",
+    "signal_strength": "Kitchen Signal strength",
+}
+
+
+async def test_reading_sensors_unavailable_until_advert(
+    hass: HomeAssistant, setup_entry
+) -> None:
+    for key in ("temperature", "humidity", "battery", "voltage"):
+        state = hass.states.get(entity_id(hass, "sensor", key))
+        assert state.state == STATE_UNAVAILABLE
+
+
+async def test_reading_sensors_follow_adverts(
+    hass: HomeAssistant, setup_entry, bluetooth_mock: FakeBluetooth
+) -> None:
+    bluetooth_mock.advert(ADVERT_A, rssi=-71)
+    await hass.async_block_till_done()
+    temperature = hass.states.get(entity_id(hass, "sensor", "temperature"))
+    assert float(temperature.state) == 25.0
+    assert temperature.attributes["unit_of_measurement"] == "°C"
+    assert temperature.attributes["device_class"] == "temperature"
+    assert float(hass.states.get(entity_id(hass, "sensor", "humidity")).state) == 50.55
+    assert hass.states.get(entity_id(hass, "sensor", "battery")).state == "92"
+    # The voltage comes with the other advert; until then it stays unavailable.
+    voltage_id = entity_id(hass, "sensor", "voltage")
+    assert hass.states.get(voltage_id).state == STATE_UNAVAILABLE
+    bluetooth_mock.advert(ADVERT_B)
+    await hass.async_block_till_done()
+    assert float(hass.states.get(voltage_id).state) == 2.858
+    # The earlier values stay while the adverts alternate.
+    assert hass.states.get(entity_id(hass, "sensor", "battery")).state == "92"
+
+
+async def test_reading_sensors_unavailable_when_thermometer_silent(
+    hass: HomeAssistant, setup_entry, bluetooth_mock: FakeBluetooth
+) -> None:
+    bluetooth_mock.advert(ADVERT_A)
+    bluetooth_mock.go_unavailable()
+    await hass.async_block_till_done()
+    eid = entity_id(hass, "sensor", "temperature")
+    assert hass.states.get(eid).state == STATE_UNAVAILABLE
+
+
+async def test_signal_strength_disabled_by_default(
+    hass: HomeAssistant, setup_entry
+) -> None:
+    entry = er.async_get(hass).async_get(entity_id(hass, "sensor", "signal_strength"))
+    assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+
+async def test_reading_sensor_names_and_categories(
+    hass: HomeAssistant, setup_entry
+) -> None:
+    registry = er.async_get(hass)
+    for key, name in READING_NAMES.items():
+        entry = registry.async_get(entity_id(hass, "sensor", key))
+        assert entry.original_name == name.removeprefix("Kitchen ")
+    categories = {
+        key: registry.async_get(entity_id(hass, "sensor", key)).entity_category
+        for key in READING_NAMES
+    }
+    assert categories["temperature"] is None
+    assert categories["humidity"] is None
+    assert categories["battery"] is EntityCategory.DIAGNOSTIC
+    assert categories["voltage"] is EntityCategory.DIAGNOSTIC
+
+
+async def test_signal_strength_value_when_enabled(
+    hass: HomeAssistant, setup_entry, bluetooth_mock: FakeBluetooth
+) -> None:
+    registry = er.async_get(hass)
+    eid = entity_id(hass, "sensor", "signal_strength")
+    registry.async_update_entity(eid, disabled_by=None)
+    await hass.config_entries.async_reload(setup_entry.entry_id)
+    await hass.async_block_till_done()
+    bluetooth_mock.advert(ADVERT_A, rssi=-71)
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).state == "-71"

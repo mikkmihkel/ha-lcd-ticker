@@ -9,6 +9,7 @@ from homeassistant.helpers.typing import ConfigType
 from .ble import get_writer
 from .const import DOMAIN, PLATFORMS
 from .models import LcdTickerConfigEntry, LcdTickerData, structural_snapshot
+from .readings import ReadingsListener
 from .scheduler import Scheduler
 from .services import async_setup_services
 
@@ -24,7 +25,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: LcdTickerConfigEntry) -> bool:
     """Set up one thermometer."""
     scheduler = Scheduler(hass, entry, get_writer(hass))
-    entry.runtime_data = LcdTickerData(scheduler, structural_snapshot(entry))
+    readings = ReadingsListener(hass, entry)
+    entry.runtime_data = LcdTickerData(scheduler, readings, structural_snapshot(entry))
+    await readings.async_start()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await scheduler.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -46,4 +49,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: LcdTickerConfigEntry) -
     ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if ok:
         await entry.runtime_data.scheduler.async_stop()
+        await entry.runtime_data.readings.async_stop()
     return ok

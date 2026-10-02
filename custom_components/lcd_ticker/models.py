@@ -8,6 +8,7 @@ import json
 from homeassistant.config_entries import ConfigEntry
 
 from .const import LIVE_OPTION_KEYS
+from .readings import ReadingsListener
 from .scheduler import Scheduler
 
 
@@ -16,6 +17,7 @@ class LcdTickerData:
     """What a loaded entry keeps."""
 
     scheduler: Scheduler
+    readings: ReadingsListener
     snapshot: str
 
 
