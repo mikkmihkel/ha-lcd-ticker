@@ -8,8 +8,9 @@ __pycache__/
 htmlcov/
 coverage.xml
 
-# Local Claude instructions
+# Local tooling
 CLAUDE.md
 CLAUDE.local.md
 .claude/
 .superpowers/
+docs/plans/

@@ -108,7 +108,7 @@ Averages and sums: create a Min/Max or Statistics helper and pick it as a screen
 
 - **"Could not reach the thermometer"**: move it closer to the adapter and check that the adapter supports active connections.
 - **The LCD alternates with temperature and humidity**: expected with a validity below 65535 (Single mode, Alternate). Pvvx settings such as `show_batt_enabled` can add battery or clock stages.
-- **`iH` or `oL`**: the value is out of range; check the screen's conversion and multiplier.
+- **A screen shows 1999 or -99**: values are capped to what the LCD can show; check the screen's conversion and multiplier.
 - **Battery %**: the thermometer's own BTHome device (same MAC) shows it, not the LCD Ticker device.
 - **Deleting your last screen**: turn Rotation off first, otherwise the LCD keeps the last value.
 
@@ -116,7 +116,7 @@ Attach the **diagnostics** download to bug reports; the MAC is redacted.
 
 ## Remove
 
-Delete the thermometer under **Settings → Devices & services → LCD Ticker**. The LCD keeps the last frame until it reboots; briefly take out the battery.
+Delete the thermometer under **Settings → Devices & services → LCD Ticker**. A frozen frame (validity 65535) stays until the thermometer reboots, so briefly take out the battery.
 
 ## Credits and license
 
