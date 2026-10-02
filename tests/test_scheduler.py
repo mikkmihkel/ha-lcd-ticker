@@ -12,6 +12,8 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -375,6 +377,8 @@ async def test_jump_shows_screen_now(hass, freezer, writer, run) -> None:
     await hass.async_block_till_done()
     await asyncio.sleep(0)
     assert bigs(writer) == [10.0, 2.0, 12.0]
+    await advance(hass, freezer, DWELL)  # rotation continues after the jumped screen
+    assert bigs(writer) == [10.0, 2.0, 12.0, 2.0]
 
 
 async def test_jump_within_gap_is_ignored(hass, freezer, writer, run) -> None:
@@ -436,13 +440,14 @@ async def test_quiet_hours_end_resumes_within_check_interval(
     hass, freezer, writer, run
 ) -> None:
     await hass.config.async_set_time_zone("UTC")
-    freezer.move_to("2026-10-02 05:58:00+00:00")
+    freezer.move_to("2026-10-02 05:58:30+00:00")
     set_value(hass, "sensor.a", "5")
     options = {CONF_QUIET_START: "22:00", CONF_QUIET_END: "06:00"}
     scheduler = await run(options, screens=(screen("sensor.a"),))
     assert decode(writer.writes[-1])[2] == VALIDITY_BUILTIN
-    await advance(hass, freezer, 3 * 60)
-    await advance(hass, freezer, MIN_WRITE_GAP)
+    # quiet ends at 06:00:00; the next activity check is at 06:00:30
+    await advance(hass, freezer, 2 * ACTIVITY_CHECK_INTERVAL - RELOAD_DELAY)
+    await advance(hass, freezer, 0)
     assert scheduler.active is True
     assert bigs(writer)[-1] == 5.0
 
@@ -569,7 +574,7 @@ async def test_failures_create_and_clear_issue(
     assert registry.async_get_issue(DOMAIN, issue_id) is None
     assert scheduler.reachable is True
     assert scheduler.last_error is None
-    assert "back online" in caplog.text
+    assert caplog.text.count("back online") == 1
 
 
 async def test_failed_write_is_not_retried_in_a_burst(
@@ -603,16 +608,41 @@ async def test_unexpected_exception_is_contained(
     assert "Unexpected error" in caplog.text
 
 
-async def test_stale_issue_without_success(hass, freezer, writer, run) -> None:
-    set_value(hass, "sensor.a", "unavailable")
+async def test_outage_over_an_hour_creates_issue(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "1")
+    scheduler = await run(first_tick=False, screens=(screen("sensor.a"),))
+    issue_id = f"{ISSUE_UNREACHABLE}_{scheduler.entry.entry_id}"
+    registry = ir.async_get(hass)
+    writer.fail = DeviceUnreachable("gone")
+    await advance(hass, freezer, RELOAD_DELAY)  # first failure
+    for step in range(3):  # 4 failures in total, fewer than FAILURES_FOR_ISSUE
+        await advance(hass, freezer, DWELL)
+        set_value(hass, "sensor.a", str(step + 5))
+    assert scheduler._failures < FAILURES_FOR_ISSUE
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+    # no more failing writes (value unchanged), only the activity checks run
+    await advance(hass, freezer, NO_SUCCESS_FOR_ISSUE)
+    await advance(hass, freezer, ACTIVITY_CHECK_INTERVAL)
+    assert registry.async_get_issue(DOMAIN, issue_id) is not None
+
+
+async def test_no_issue_without_failures(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "1")
     scheduler = await run(screens=(screen("sensor.a"),))
     issue_id = f"{ISSUE_UNREACHABLE}_{scheduler.entry.entry_id}"
     registry = ir.async_get(hass)
-    for _ in range(NO_SUCCESS_FOR_ISSUE // ACTIVITY_CHECK_INTERVAL - 1):
+    for _ in range(2 * 3600 // ACTIVITY_CHECK_INTERVAL):
         await advance(hass, freezer, ACTIVITY_CHECK_INTERVAL)
     assert registry.async_get_issue(DOMAIN, issue_id) is None
-    await advance(hass, freezer, ACTIVITY_CHECK_INTERVAL + RELOAD_DELAY)
-    assert registry.async_get_issue(DOMAIN, issue_id) is not None
+
+
+async def test_no_issue_for_unavailable_source(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "unavailable")
+    scheduler = await run(screens=(screen("sensor.a"),))
+    issue_id = f"{ISSUE_UNREACHABLE}_{scheduler.entry.entry_id}"
+    for _ in range(2 * 3600 // ACTIVITY_CHECK_INTERVAL):
+        await advance(hass, freezer, ACTIVITY_CHECK_INTERVAL)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
 
 
 # ---- options and actions ---------------------------------------------------
@@ -764,8 +794,6 @@ async def test_diagnostics_and_counters(hass, freezer, writer, run) -> None:
 
 
 async def test_update_signal_is_sent(hass, freezer, writer, run) -> None:
-    from homeassistant.helpers.dispatcher import async_dispatcher_connect
-
     set_value(hass, "sensor.a", "1")
     scheduler = await run(first_tick=False, screens=(screen("sensor.a"),))
     calls: list[int] = []
@@ -802,3 +830,136 @@ async def test_state_without_unit_and_missing_entity(
     await run(screens=(screen("sensor.a"), screen("sensor.missing", 2)))
     await advance(hass, freezer, DWELL)
     assert bigs(writer) == [3.0]
+
+
+async def test_alternate_refreshes_finite_frame_after_two_thirds(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "5")
+    options = {CONF_ON_HA_STOP: HA_STOP_ALTERNATE}
+    await run(options, screens=(screen("sensor.a"),))
+    await advance(hass, freezer, DWELL)  # 480 s
+    await advance(hass, freezer, DWELL)  # 960 s
+    assert len(writer.writes) == 1
+    await advance(hass, freezer, DWELL)  # 1440 s > 1200 s
+    assert len(writer.writes) == 2
+
+
+async def test_permanent_frame_is_never_refreshed(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.a", "5")
+    await run(screens=(screen("sensor.a"),))
+    for _ in range(10):
+        await advance(hass, freezer, DWELL)
+    assert len(writer.writes) == 1
+
+
+async def test_single_mode_two_changes_in_one_dwell_write_once(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "5")
+    await run({CONF_MODE: MODE_SINGLE}, screens=(screen("sensor.a"),))
+    set_value(hass, "sensor.a", "6")
+    set_value(hass, "sensor.a", "7")
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [5.0, 7.0]
+
+
+async def test_tick_does_not_overwrite_schedule_made_during_write(
+    hass, freezer
+) -> None:
+    await hass.config.async_set_time_zone("UTC")
+    freezer.move_to("2026-10-02 21:59:00+00:00")
+    gate = asyncio.Event()
+    written: list[bytes] = []
+
+    class SlowWriter:
+        async def async_write(self, address, frames):
+            if len(written) == 1:  # block the second write
+                await gate.wait()
+            written.extend(frames)
+
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    options = {CONF_QUIET_START: "22:00", CONF_QUIET_END: "06:00"}
+    entry = make_entry(hass, options, (screen("sensor.a", 1), screen("sensor.b", 2)))
+    scheduler = Scheduler(hass, entry, SlowWriter())
+    await scheduler.async_start()
+    await advance(hass, freezer, RELOAD_DELAY)
+    assert len(written) == 1
+    await advance(hass, freezer, DWELL - 400)  # 21:59:02 + 80 s: not due yet
+    freezer.move_to("2026-10-02 22:00:30+00:00")  # tick due at 22:07:02
+    scheduler._schedule_at(dt_util.utcnow())  # make the second tick due now
+    async_fire_time_changed(hass)
+    await asyncio.sleep(0)
+    freezer.tick(ACTIVITY_CHECK_INTERVAL)  # quiet hours begin during the write
+    async_fire_time_changed(hass)
+    await asyncio.sleep(0)
+    assert scheduler.active is False
+    gate.set()
+    await hass.async_block_till_done()
+    await asyncio.sleep(0)
+    # the inactive frame follows at the next write gap, not a dwell later
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert decode(written[-1])[2] == VALIDITY_BUILTIN
+    await scheduler.async_stop()
+
+
+async def test_show_now_keeps_screen_for_queued_tick(hass, freezer) -> None:
+    gate = asyncio.Event()
+    written: list[bytes] = []
+
+    class GatedWriter:
+        block = False
+
+        async def async_write(self, address, frames):
+            if self.block:
+                await gate.wait()
+            written.extend(frames)
+
+    writer = GatedWriter()
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    entry = make_entry(hass, screens=(screen("sensor.a", 1), screen("sensor.b", 2)))
+    scheduler = Scheduler(hass, entry, writer)
+    await scheduler.async_start()
+    await advance(hass, freezer, RELOAD_DELAY)
+    slot_b = next(s for s, n in scheduler.slot_names().items() if n == "S2")
+    await advance(hass, freezer, DWELL - 2)  # the tick is due in 2 s
+    writer.block = True
+    show = asyncio.create_task(scheduler.async_show_now(slot_b))
+    await asyncio.sleep(0)  # show_now holds the lock, waiting in the write
+    await advance(hass, freezer, 2)  # the tick fires and queues for the lock
+    gate.set()
+    await show
+    await hass.async_block_till_done()
+    await asyncio.sleep(0)
+    assert [decode(w)[0] for w in written] == [1.0, 2.0]
+    assert scheduler.current_slot == slot_b
+    await scheduler.async_stop()
+
+
+async def test_stop_during_write_creates_no_issue_or_signal(hass, freezer) -> None:
+    gate = asyncio.Event()
+
+    class SlowWriter:
+        async def async_write(self, address, frames):
+            await gate.wait()
+            raise DeviceUnreachable("late")
+
+    set_value(hass, "sensor.a", "1")
+    entry = make_entry(hass, screens=(screen("sensor.a"),))
+    scheduler = Scheduler(hass, entry, SlowWriter())
+    scheduler._active = True
+    scheduler._failures = FAILURES_FOR_ISSUE
+    task = asyncio.create_task(scheduler.async_refresh())
+    await asyncio.sleep(0)
+    await scheduler.async_stop()
+    calls: list[int] = []
+    async_dispatcher_connect(
+        hass, signal_update(entry.entry_id), lambda: calls.append(1)
+    )
+    gate.set()
+    await task
+    issue_id = f"{ISSUE_UNREACHABLE}_{entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert calls == []

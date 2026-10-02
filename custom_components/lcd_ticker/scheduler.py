@@ -161,6 +161,9 @@ class Scheduler:
         self._tick_due: datetime.datetime | None = None
         self._unsubs: list[Callable[[], None]] = []
         self._stopped = False
+        self._schedule_gen = 0
+        self._tick_gen = 0
+        self._outage_started_at: datetime.datetime | None = None
 
         self._index = -1
         self._active = False
@@ -341,12 +344,18 @@ class Scheduler:
     def _schedule_at(self, due: datetime.datetime) -> None:
         """Keep exactly one pending tick."""
         self._cancel_tick()
+        self._schedule_gen += 1
         if self._stopped:
             return
         self._tick_due = due
         self._unsub_tick = async_track_point_in_utc_time(
             self.hass, self._on_tick_due, due
         )
+
+    def _schedule_after_write(self, due: datetime.datetime) -> None:
+        """Schedule the next tick unless someone else did while we were writing."""
+        if self._schedule_gen == self._tick_gen:
+            self._schedule_at(due)
 
     def _spawn(self, coro: Coroutine[Any, Any, Any], name: str) -> None:
         self.entry.async_create_background_task(
@@ -360,6 +369,8 @@ class Scheduler:
         self._spawn(self._async_tick(), "tick")
 
     def _notify(self) -> None:
+        if self._stopped:
+            return
         async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
 
     def _earliest_write(self, now: datetime.datetime) -> datetime.datetime:
@@ -411,14 +422,17 @@ class Scheduler:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
-        self._clear_issue()
+        ir.async_delete_issue(self.hass, DOMAIN, self._issue_id())
 
     # ---- the tick --------------------------------------------------------
 
     async def _async_tick(self, force: bool = False) -> None:
         async with self._lock:
-            self._cancel_tick()
             now = dt_util.utcnow()
+            if not force and self._tick_due is not None and self._tick_due > now:
+                return  # a show or refresh rescheduled while this tick waited
+            self._cancel_tick()
+            self._tick_gen = self._schedule_gen
             self._last_tick_at = now
             if not self._active:
                 if force or not self._inactive_written:
@@ -443,22 +457,21 @@ class Scheduler:
             if frame is not None:
                 self._index = index
                 await self._async_write_frame(slot, frame, force)
-                self._schedule_at(now + datetime.timedelta(seconds=self._dwell(slot)))
+                self._schedule_after_write(
+                    now + datetime.timedelta(seconds=self._dwell(slot))
+                )
                 return
-        self._schedule_at(now + datetime.timedelta(seconds=self._options[CONF_SECONDS]))
+        self._schedule_after_write(
+            now + datetime.timedelta(seconds=self._options[CONF_SECONDS])
+        )
 
     async def _tick_single(self, now: datetime.datetime, force: bool) -> None:
         slot = self._slots[0] if self._slots else None
         frame = self._render_slot(slot) if slot else None
         if slot is not None and frame is not None:
             self._index = 0
-            validity = self._validity()
-            stale = (
-                self._last_success_at is None
-                or (now - self._last_success_at).total_seconds() > validity * 2 / 3
-            )
-            await self._async_write_frame(slot, frame, force or stale)
-        self._schedule_at(now + datetime.timedelta(seconds=self._dwell(slot)))
+            await self._async_write_frame(slot, frame, force)
+        self._schedule_after_write(now + datetime.timedelta(seconds=self._dwell(slot)))
 
     async def _async_write_inactive(self) -> None:
         mode = self._options.get(CONF_INACTIVE_DISPLAY, INACTIVE_BUILTIN)
@@ -479,14 +492,23 @@ class Scheduler:
     async def _async_write_frame(
         self, slot: str | None, frame: DisplayFrame, must: bool
     ) -> None:
-        """Write the frame if it differs from the last one (or `must`)."""
+        """Write if the frame changed, `must`, or a finite one is about to expire."""
         payload = build_ext_frame(frame)
-        if not must and payload == self._last_payload:
+        if not must and payload == self._last_payload and not self._is_stale(frame):
             return
         if await self._async_send(payload):
             self._last_payload = payload
             if slot is not None and slot != BUILTIN_SLOT:
                 self._last_big[slot] = frame.big
+
+    def _is_stale(self, frame: DisplayFrame) -> bool:
+        """An active finite-validity frame older than 2/3 of its validity."""
+        if not self._active or frame.validity in (VALIDITY_PERMANENT, VALIDITY_BUILTIN):
+            return False
+        if self._last_success_at is None:
+            return True
+        age = (dt_util.utcnow() - self._last_success_at).total_seconds()
+        return age > frame.validity * 2 / 3
 
     async def _async_send(self, payload: bytes) -> bool:
         """Write once. Never raises, never retries."""
@@ -510,6 +532,7 @@ class Scheduler:
         self._last_success_at = now
         self.reachable = True
         self._failures = 0
+        self._outage_started_at = None
         self.last_error = None
         self._writes.append(now)
         self._clear_issue()
@@ -519,6 +542,8 @@ class Scheduler:
 
     def _record_failure(self, err: Exception, unexpected: bool = False) -> None:
         self._failures += 1
+        if self._outage_started_at is None:
+            self._outage_started_at = dt_util.utcnow()
         self.reachable = False
         self.last_error = str(err) or type(err).__name__
         if not self._warned:
@@ -541,12 +566,9 @@ class Scheduler:
             self._active = active
             self._schedule_at(self._earliest_write(now))
             self._notify()
-        if active:
-            since = self.last_success or self._started_at
-            if (
-                since is not None
-                and (now - since).total_seconds() >= NO_SUCCESS_FOR_ISSUE
-            ):
+        if active and self._outage_started_at is not None:
+            outage = (now - self._outage_started_at).total_seconds()
+            if outage >= NO_SUCCESS_FOR_ISSUE:
                 self._set_issue()
         return changed
 
@@ -615,19 +637,24 @@ class Scheduler:
 
     async def _async_show(self, slot: str, now: datetime.datetime) -> None:
         """Write the slot now (forced) and schedule the next tick. Lock is held."""
+        self._tick_gen = self._schedule_gen
         self._index = self._slots.index(slot)
         frame = self._render_slot(slot)
         if frame is not None:
             await self._async_write_frame(slot, frame, True)
         self._last_tick_at = now
         if self._active:
-            self._schedule_at(now + datetime.timedelta(seconds=self._dwell(slot)))
+            self._schedule_after_write(
+                now + datetime.timedelta(seconds=self._dwell(slot))
+            )
 
     async def async_show_now(self, slot_id: str) -> None:
         """Show a slot now, even when inactive."""
         if slot_id not in self._slots:
             raise ValueError(f"Unknown slot: {slot_id}")
         async with self._lock:
+            if slot_id not in self._slots:  # options may have changed while waiting
+                raise ValueError(f"Unknown slot: {slot_id}")
             await self._async_show(slot_id, dt_util.utcnow())
 
     async def async_refresh(self) -> None:
@@ -670,6 +697,8 @@ class Scheduler:
         return f"{ISSUE_UNREACHABLE}_{self.entry.entry_id}"
 
     def _set_issue(self) -> None:
+        if self._stopped:
+            return
         ir.async_create_issue(
             self.hass,
             DOMAIN,
@@ -681,4 +710,6 @@ class Scheduler:
         )
 
     def _clear_issue(self) -> None:
+        if self._stopped:
+            return
         ir.async_delete_issue(self.hass, DOMAIN, self._issue_id())
