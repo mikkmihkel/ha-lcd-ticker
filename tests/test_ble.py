@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bleak.exc import BleakError
@@ -71,9 +70,6 @@ async def test_no_device(hass):
 
 async def test_connect_fails(hass):
     """When connection fails, raise WriteFailed and do not disconnect."""
-    client = MagicMock()
-    client.disconnect = AsyncMock()
-
     with (
         patch(
             "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
@@ -86,8 +82,6 @@ async def test_connect_fails(hass):
         pytest.raises(WriteFailed),
     ):
         await BleWriter(hass).async_write(ADDR, [b"\x01"])
-
-    client.disconnect.assert_not_awaited()
 
 
 async def test_write_fails(hass, client):
@@ -132,7 +126,7 @@ async def test_disconnect_fails(hass, client):
 
 
 async def test_timeout(hass, client):
-    """When write times out, raise WriteFailed."""
+    """When write times out, raise WriteFailed, disconnect is called, and lock is released."""
 
     async def slow_write(*args, **kwargs):
         await asyncio.sleep(1)
@@ -151,17 +145,29 @@ async def test_timeout(hass, client):
         patch("custom_components.lcd_ticker.ble.WRITE_TIMEOUT", 0.05),
         pytest.raises(WriteFailed),
     ):
-        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+        writer = BleWriter(hass)
+        await writer.async_write(ADDR, [b"\x01"])
+
+    # Disconnect should be called even on timeout
+    client.disconnect.assert_awaited_once()
+    # Lock should be released after timeout
+    assert not writer._lock.locked()
 
 
 async def test_serialized(hass, client):
     """Two concurrent async_write calls never overlap."""
-    timestamps = []
+    events = []
+    in_flight = 0
+    max_in_flight = 0
 
     async def recording_write(*args, **kwargs):
-        timestamps.append(("enter", time.monotonic()))
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        events.append("enter")
         await asyncio.sleep(0.05)
-        timestamps.append(("exit", time.monotonic()))
+        events.append("exit")
+        in_flight -= 1
 
     client.write_gatt_char = AsyncMock(side_effect=recording_write)
 
@@ -181,10 +187,10 @@ async def test_serialized(hass, client):
             writer.async_write("a4:c1:38:00:00:02", [b"\x02"]),
         )
 
-    # Should have 4 events: enter1, exit1, enter2, exit2
-    assert len(timestamps) == 4
-    # Second enter should be after first exit
-    assert timestamps[1][1] <= timestamps[2][1]
+    # Verify exactly 4 events in strict order: enter, exit, enter, exit
+    assert events == ["enter", "exit", "enter", "exit"]
+    # Verify only one write was in-flight at a time
+    assert max_in_flight == 1
 
 
 async def test_shared_instance(hass):
@@ -215,3 +221,25 @@ async def test_address_upper_cased(hass):
     # First argument after hass should be uppercase
     call_args = lookup.call_args
     assert call_args[0][1] == ADDR.upper()
+
+
+async def test_address_masked_in_error(hass):
+    """WriteFailed message does not contain the device address."""
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.lcd_ticker.ble.establish_connection",
+            AsyncMock(side_effect=BleakError(f"{ADDR.upper()} not found")),
+        ),
+        pytest.raises(WriteFailed) as exc_info,
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+
+    # Address should not appear in the error message
+    assert ADDR.upper() not in str(exc_info.value)
+    assert ADDR.lower() not in str(exc_info.value)
+    # But the placeholder should be there
+    assert "<address>" in str(exc_info.value)

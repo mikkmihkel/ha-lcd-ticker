@@ -69,7 +69,11 @@ class BleWriter:
                 await client.write_gatt_char(CHAR_UUID, frame, response=False)
             _LOGGER.debug("wrote %d frame(s)", len(frames))
         except (BleakError, OSError, EOFError) as err:
-            raise WriteFailed(str(err) or type(err).__name__) from err
+            msg = str(err) or type(err).__name__
+            # Mask the MAC address from error messages
+            msg = msg.replace(address, "<address>")
+            msg = msg.replace(address.lower(), "<address>")
+            raise WriteFailed(msg) from err
         finally:
             if client is not None:
                 # Disconnect is best effort; a failure there must never hide the real result
