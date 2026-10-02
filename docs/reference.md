@@ -7,7 +7,7 @@ Choose the target with one of `device_id` (a configured thermometer) or `address
 | Field | Description |
 |---|---|
 | `device_id` or `address` | The thermometer: a configured device, or a MAC address |
-| `big` | Big number. One decimal from −9.5 to 199.5, whole numbers up to 1999 and down to −99. Values outside are capped. |
+| `big` | Big number. One decimal from −9.5 to 199.5, whole numbers up to 1999 and down to −99. Values outside are capped (to 1999.4 and −99.4, so the LCD never shows a value it can't draw). |
 | `small` | Small number, rounded to a whole number, −9 … 99. Values outside are capped. |
 | `validity` | Seconds the display keeps your value instead of its own reading. Default 900. **65535 = until the thermometer reboots** |
 | `unit` | Symbol next to the big number (see below) |

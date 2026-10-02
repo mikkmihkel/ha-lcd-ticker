@@ -371,7 +371,7 @@
         },
         "big": {
           "name": "Big number",
-          "description": "-99.5 to 1999.5."
+          "description": "-99.4 to 1999.4."
         },
         "small": {
           "name": "Small number",

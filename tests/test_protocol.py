@@ -35,8 +35,9 @@ def test_golden_frame_from_upstream_readme() -> None:
         (1999.4, 19994),
         (1999.5, 19994),
         (5000, 19994),
-        (-99.5, -995),
-        (-1000, -995),
+        (-99.4, -994),
+        (-99.5, -994),
+        (-1000, -994),
     ],
 )
 def test_encode_big_rounds_and_clamps(value: float, expected: int) -> None:

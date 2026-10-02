@@ -2,7 +2,7 @@
 
 External data frame (command 0x22), 8 bytes, little endian:
     [0]   0x22
-    [1:3] big number    int16, value x 10   (-99.5 .. 1999.4)
+    [1:3] big number    int16, value x 10   (-99.4 .. 1999.4)
     [3:5] small number  int16               (-9 .. 99)
     [5:7] validity      uint16, seconds     (0xFFFF = show permanently)
     [7]   flags: bits0-2 smiley value, bit3 %, bit4 battery icon, bits5-7 unit
@@ -20,8 +20,9 @@ import struct
 EXT_CMD = 0x22
 TIME_CMD = 0x23
 
-BIG_MIN = -99.5
-# 1999.5 would encode 19995, which the firmware shows as 2000: more than the LCD fits.
+# -99.5 would encode -995, which the firmware draws as a garbled "-100".
+BIG_MIN = -99.4
+# 1999.5 would encode 19995; the firmware rounds that to 2000, which the LCD shows as "1000".
 BIG_MAX = 1999.4
 SMALL_MIN = -9
 SMALL_MAX = 99

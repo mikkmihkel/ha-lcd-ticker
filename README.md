@@ -31,7 +31,6 @@ You need Home Assistant **2026.3+** and Bluetooth that can make connections. A R
 | **Custom** | Anything, with your own multiplier, offset and units | Anything | Your choice |
 
 Notes on the presets:
-- **Each screen's setup shows a live preview of what the LCD will display.**
 - **Units convert automatically.** W becomes kW, °F becomes °C, and EUR/MWh becomes c/kWh.
 - **Nord Pool prices** from the built-in integration come without VAT. Set your VAT % on the price screen.
 - **For averages, minimums or sums**, create a *Min/Max* or *Statistics* helper in Home Assistant, then pick it as the screen's entity.
@@ -40,11 +39,11 @@ The LCD shows only digits and a few symbols, so give each screen a marker you'll
 
 ## Examples
 
-1. **Sauna, only while it heats.** Create a *Threshold* helper called "Sauna heating" (sauna temperature above 40 °C). Add a **Single value** screen "Sauna" with the symbol °C and a fixed face. Set *Only show while this is on* to the threshold sensor and turn on **take-over**, so the sauna temperature replaces the other screens until it cools down.
-2. **Home average.** Create a *Min/Max* helper (mean) from your temperature sensors, or use your existing `sensor.home_average_temp` and `sensor.home_average_hum`. Add a **Room climate** screen with them. The face uses the comfort range (30 / 40 / 60 / 70 %).
+1. **Sauna, only while it heats.** Create a *Threshold* helper called "Sauna heating" (sauna temperature above 40 °C). Add a **Single value** screen "Sauna" with the symbol °C and a fixed face. Set *Only show while this is on* to the threshold sensor and turn on *Show only this screen while it is on*, so the sauna temperature replaces the other screens until it cools down.
+2. **Home average.** Create two *Min/Max* helpers (type: mean), one from your temperature sensors and one from your humidity sensors, or use averages you already have (e.g. `sensor.home_average_temp` and `sensor.home_average_hum`). Add a **Room climate** screen with them. The face is happiest at 40–60 % humidity and sad below 30 % or above 70 %; adjust the four thresholds if you like.
 3. **Electricity price in the daytime.** Create a *Schedule* helper "Daytime". Add an **Electricity price** screen, set *Only show while this is on* to the schedule, and enter your VAT %.
 
-Each screen's setup shows a live preview of the LCD, and the **Display** sensor shows what is on the LCD right now.
+Each screen's setup shows a **live preview** of what the LCD will display, including the raw value it converts from. The **Display** sensor shows what is on the LCD right now.
 
 ## How screens and battery work
 

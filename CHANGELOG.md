@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format follows
 - Conversion controls (multiplier, offset, decimals) in every preset.
 - Comfort-range faces, where the middle of the range is the best.
 
+### Fixed
+
+- Values at the very top or bottom of the range are capped at 1999.4 and −99.4. Before, the firmware rounded them to numbers the LCD can't draw (shown as "1000" or a garbled "-100").
+
 ## [0.1.2] - 2026-10-02
 
 ### Fixed

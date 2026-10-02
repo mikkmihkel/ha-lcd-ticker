@@ -360,7 +360,7 @@ def test_face_middle_sorts_thresholds_first():
         (250.45, "251"),
         (-0.04, "0.0"),
         (1e6, "1999"),
-        (-1e6, "-100"),
+        (-1e6, "-99"),
     ],
 )
 def test_format_big(value, text):
