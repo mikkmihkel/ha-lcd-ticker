@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- Writes failed with "Characteristic …1f1f was not found" when Home Assistant had a stale Bluetooth service cache for the thermometer (for example from before the pvvx flash). LCD Ticker now clears the cache and retries once with a fresh lookup.
+- Writes failed with "Characteristic …1f1f was not found" when Home Assistant had a stale Bluetooth service cache for the thermometer (for example from before the pvvx flash). LCD Ticker now clears the cache (in Home Assistant and, if needed, in BlueZ) and retries once with a fresh lookup.
 - Writes timed out after 20 s before the Bluetooth library could finish its own connection retries. The limit is now 60 s.
 
 ## [0.1.1] - 2026-10-02

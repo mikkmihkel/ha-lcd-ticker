@@ -10,7 +10,8 @@ import re
 
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakCharacteristicNotFoundError, BleakError
-from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+import bleak_retry_connector
+from bleak_retry_connector import clear_cache as clear_bluez_cache, establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -84,13 +85,19 @@ class BleWriter:
         if device is None:
             raise DeviceUnreachable("not in Bluetooth range or not connectable")
         try:
-            await self._connect_and_write(device, frames, use_cache=True)
+            await self._connect_and_write(address, device, frames, use_cache=True)
         except BleakCharacteristicNotFoundError:
             # A stale or incomplete GATT cache (e.g. from before the pvvx flash) hides
             # the display characteristic. Look the services up fresh, once.
             _LOGGER.debug("display characteristic missing, retrying without cache")
+            device = (
+                bluetooth.async_ble_device_from_address(
+                    self._hass, address, connectable=True
+                )
+                or device
+            )
             try:
-                await self._connect_and_write(device, frames, use_cache=False)
+                await self._connect_and_write(address, device, frames, use_cache=False)
             except BleakCharacteristicNotFoundError as err:
                 raise WriteFailed(
                     "the thermometer has no display characteristic; "
@@ -98,12 +105,19 @@ class BleWriter:
                 ) from err
 
     async def _connect_and_write(
-        self, device: BLEDevice, frames: Sequence[bytes], *, use_cache: bool
+        self,
+        address: str,
+        device: BLEDevice,
+        frames: Sequence[bytes],
+        *,
+        use_cache: bool,
     ) -> None:
         client = None
         try:
+            # Looked up at call time: Home Assistant installs its own client class
+            # (with working cache clearing) after this module is imported.
             client = await establish_connection(
-                BleakClientWithServiceCache,
+                bleak_retry_connector.BleakClientWithServiceCache,
                 device,
                 device.name or "thermometer",
                 max_attempts=CONNECT_ATTEMPTS,
@@ -114,7 +128,8 @@ class BleWriter:
                     await client.write_gatt_char(CHAR_UUID, frame, response=False)
             except BleakCharacteristicNotFoundError:
                 with contextlib.suppress(Exception):
-                    await client.clear_cache()
+                    if not await client.clear_cache():
+                        await clear_bluez_cache(address)
                 raise
             _LOGGER.debug("wrote %d frame(s)", len(frames))
         except BleakCharacteristicNotFoundError:
