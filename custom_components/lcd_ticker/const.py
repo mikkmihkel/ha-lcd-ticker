@@ -139,13 +139,6 @@ PRESET_CLIMATE: Final = "climate"
 PRESET_PRICE: Final = "price"
 PRESET_SINGLE: Final = "single"
 PRESET_CUSTOM: Final = "custom"
-PRESETS_ORDER: Final = [
-    PRESET_SOLAR,
-    PRESET_CLIMATE,
-    PRESET_PRICE,
-    PRESET_SINGLE,
-    PRESET_CUSTOM,
-]
 
 CONVERT_NONE: Final = "none"
 CONVERT_KW: Final = "kw"

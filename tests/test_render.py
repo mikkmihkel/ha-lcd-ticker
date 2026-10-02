@@ -499,3 +499,33 @@ def test_describe_face_unknown_while_a_number_is_missing():
 @pytest.mark.parametrize("unit", ["senti/kWh", "sent/kWh", "¢/kWh", "cents/kWh"])
 def test_price_factor_more_cent_spellings(unit):
     assert price_factor(unit) == 1
+
+
+def test_describe_small_number_is_clamped_like_the_lcd():
+    values = {
+        "sensor.pv": SourceValue("1000", "W"),
+        "sensor.export": SourceValue("0", "W"),
+        "sensor.h": SourceValue("150", "%"),
+    }
+    screen = SOLAR | {"big_entity": "sensor.pv"}
+    assert lines(screen, values)[1] == "Small number: 99% (self-consumption)"
+    entity = {
+        "big_entity": "sensor.pv",
+        "small_source": "entity",
+        "small_entity": "sensor.h",
+    }
+    assert lines(entity, values)[1].endswith("\u2192 shows 99")
+
+
+def test_describe_small_source_entity_without_an_entity():
+    screen = {"big_entity": "sensor.t", "small_source": "entity"}
+    values = {"sensor.t": SourceValue("5", None)}
+    assert lines(screen, values)[1] == "Small number: no entity picked"
+
+
+def test_describe_state_that_is_not_a_number():
+    values = {"sensor.t": SourceValue("Cloudy", None, "Weather")}
+    big = lines({"big_entity": "sensor.t"}, values)[0]
+    assert big == 'Big number: Weather (sensor.t) = "Cloudy", not a number'
+    values = {"sensor.t": SourceValue("unknown", None)}
+    assert lines({"big_entity": "sensor.t"}, values)[0].endswith("is unavailable")

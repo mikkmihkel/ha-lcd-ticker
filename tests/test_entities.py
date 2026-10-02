@@ -322,3 +322,24 @@ async def test_display_sensor_builtin(
     await hass.async_block_till_done()
     assert hass.states.get(eid).state == "built-in reading"
     assert hass.states.get(eid).attributes["screen"] is None  # not a screen's frame
+
+
+def test_display_sensor_shows_the_small_number_clamped_like_the_lcd() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.lcd_ticker.protocol import DisplayFrame
+    from custom_components.lcd_ticker.sensor import DisplaySensor
+
+    scheduler = SimpleNamespace(
+        last_frame=DisplayFrame(big=1.0, small=150, validity=65535),
+        last_frame_screen_name="Solar",
+    )
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(scheduler=scheduler),
+        data={"address": "A4:C1:38:00:00:01"},
+        unique_id="A4:C1:38:00:00:01",
+        title="T",
+    )
+    sensor = DisplaySensor(entry)
+    assert sensor.native_value == "1.0 | 99"
+    assert sensor.extra_state_attributes["small"] == 99

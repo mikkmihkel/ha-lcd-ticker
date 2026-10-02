@@ -25,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .const import VALIDITY_BUILTIN, signal_readings
 from .entity import LcdTickerEntity
 from .models import LcdTickerConfigEntry
-from .protocol import encode_big
+from .protocol import encode_big, encode_small
 from .render import format_big
 
 PARALLEL_UPDATES = 0
@@ -103,7 +103,7 @@ class DisplaySensor(LcdTickerEntity, SensorEntity):
             return None
         if frame.validity == VALIDITY_BUILTIN:
             return "built-in reading"
-        return f"{format_big(frame.big)} | {frame.small}"
+        return f"{format_big(frame.big)} | {encode_small(frame.small)}"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -113,7 +113,7 @@ class DisplaySensor(LcdTickerEntity, SensorEntity):
         return {
             "screen": self.scheduler.last_frame_screen_name,
             "big": encode_big(frame.big) / 10,
-            "small": frame.small,
+            "small": encode_small(frame.small),
             "unit": frame.unit.name.lower(),
             "face": frame.face.name.lower(),
             "percent": frame.percent,

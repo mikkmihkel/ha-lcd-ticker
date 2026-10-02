@@ -60,6 +60,7 @@ from .protocol import (
     Face,
     Unit,
     encode_big,
+    encode_small,
     round_half_away,
 )
 
@@ -230,8 +231,10 @@ def _problem(
 ) -> str | None:
     """Why the entity can't be used for `target`, or None if it can."""
     source = values.get(entity_id)
-    if source is None or parse_number(source.state) is None:
+    if source is None or source.state in ("", "unknown", "unavailable"):
         return f"{_label(values, entity_id)} is unavailable"
+    if parse_number(source.state) is None:
+        return f'{_label(values, entity_id)} = "{source.state}", not a number'
     if not can_convert(source.unit, target):
         unit = source.unit or "no unit"
         return (
@@ -250,6 +253,8 @@ def _entity_line(
 ) -> str:
     """'Name (entity) = state unit -> shows value', or what is wrong with it."""
     entity_id = screen.get(entity_key)
+    if not entity_id:
+        return "no entity picked"
     problem = _problem(values, entity_id, screen.get(convert_key, CONVERT_NONE))
     if problem:
         return problem
@@ -266,7 +271,7 @@ def _self_consumption_line(
     percent: str,
 ) -> str:
     if frame is not None:
-        return f"{frame.small}{percent} (self-consumption)"
+        return f"{encode_small(frame.small)}{percent} (self-consumption)"
     production = screen.get(CONF_PRODUCTION_ENTITY) or screen.get(CONF_BIG_ENTITY)
     export = screen.get(CONF_EXPORT_ENTITY)
     if not export:
@@ -295,7 +300,7 @@ def describe_screen(
 
     small_source = screen.get(CONF_SMALL_SOURCE, SMALL_NONE)
     if small_source == SMALL_ENTITY:
-        shown = f"{frame.small}{percent}" if frame is not None else None
+        shown = f"{encode_small(frame.small)}{percent}" if frame is not None else None
         small = _entity_line(
             screen, values, CONF_SMALL_ENTITY, CONF_SMALL_CONVERT, shown
         )

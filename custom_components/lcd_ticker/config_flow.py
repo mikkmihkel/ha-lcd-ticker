@@ -648,13 +648,13 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
         if user_input is not None:
             self._apply_screen(user_input)
             return await self.async_step_check()
+        return self._show_screen()
 
+    def _show_screen(self, errors: dict[str, str] | None = None) -> SubentryFlowResult:
         big_entity = self._data[CONF_BIG_ENTITY]
         schema = vol.Schema(
             {
-                vol.Required(CONF_TITLE, default=self._title): _screen_selector(
-                    CONF_TITLE
-                ),
+                vol.Optional(CONF_TITLE): _screen_selector(CONF_TITLE),
                 vol.Required(
                     CONF_BIG_ENTITY,
                     **({"default": big_entity} if big_entity else {}),
@@ -669,20 +669,19 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             }
         )
         small = self._data[CONF_SMALL_ENTITY]
-        suggested = (
-            {CONF_SMALL_ENTITY: small}
-            if small and self._data[CONF_SMALL_SOURCE] == SMALL_ENTITY
-            else {}
-        )
+        suggested = {CONF_TITLE: self._title}
+        if small and self._data[CONF_SMALL_SOURCE] == SMALL_ENTITY:
+            suggested[CONF_SMALL_ENTITY] = small
         return self.async_show_form(
             step_id="screen",
             data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            errors=errors,
         )
 
     def _apply_screen(self, user_input: Mapping[str, Any]) -> None:
         """Merge the simple form into the screen; leave everything else alone."""
         data = self._data
-        self._title = user_input[CONF_TITLE].strip()
+        self._title = user_input.get(CONF_TITLE, "").strip()
         old_big = data[CONF_BIG_ENTITY]
         data[CONF_BIG_ENTITY] = user_input[CONF_BIG_ENTITY]
         if old_big and data.get(CONF_PRODUCTION_ENTITY) == old_big:
@@ -780,6 +779,8 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
                 error, found = self._check(data)
                 if error is None:
                     return self._save(data)
+                if error == "small_entity_required":
+                    return self._show_screen({CONF_SMALL_ENTITY: error})
                 errors = {"base": error}
                 placeholders |= found
 

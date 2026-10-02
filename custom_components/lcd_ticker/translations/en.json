@@ -189,7 +189,7 @@
         "unit_not_supported": "A number uses a sensor that reports \"{unit}\", which can't be converted to {target}. Open Advanced and change the conversion (or choose \"No conversion\"), or cancel and pick another sensor.",
         "unit_unknown": "A number uses a sensor with no unit yet, so it can't be converted to {target}. Open Advanced and choose \"No conversion\" for it, or wait until the sensor reports a value.",
         "solar_small_required": "Self-consumption needs a grid export sensor. Pick one under Advanced, or choose another option for the small number.",
-        "small_entity_required": "The small number is set to \"An entity\", but none is picked. Choose another option under Advanced, or cancel and pick a small number first.",
+        "small_entity_required": "Pick the small number here, or leave it empty for no small number.",
         "production_required": "Self-consumption uses the big number as solar production. Pick a big number first.",
         "thresholds_order": "Face thresholds must go from lowest (1) to highest (4).",
         "duplicate_markers": "Another screen looks exactly like this one on the LCD. Submit again to keep it anyway.",

@@ -187,11 +187,11 @@ async def test_new_screen_with_minimal_input(hass: HomeAssistant) -> None:
     }
     assert sub.data[CONF_SMALL_SOURCE] == "none"
     assert sub.data["preset"] == "custom"
-    assert sub.title == "Screen 1"
+    assert sub.title == "temp"  # no name typed: the big entity's name
     assert CONF_TITLE not in sub.data
 
 
-async def test_second_screen_gets_the_next_position_and_name(
+async def test_second_screen_gets_the_next_position(
     hass: HomeAssistant,
 ) -> None:
     entry = await make_entry(hass)
@@ -200,7 +200,7 @@ async def test_second_screen_gets_the_next_position_and_name(
     _first, second = stored(entry)
     assert second.data["position"] == 2
     assert isinstance(second.data["position"], int)
-    assert second.title == "Screen 2"
+    assert second.title == "hum"
 
 
 async def test_empty_name_becomes_the_friendly_name(hass: HomeAssistant) -> None:
@@ -551,12 +551,54 @@ async def test_self_consumption_unit_error_names_kw(hass: HomeAssistant) -> None
     assert result["description_placeholders"]["target"] == "kW"
 
 
-async def test_small_entity_source_without_an_entity(hass: HomeAssistant) -> None:
+async def test_small_entity_required_returns_to_the_simple_form(
+    hass: HomeAssistant,
+) -> None:
     entry = await make_entry(hass)
     result = await add(
         hass, entry, {CONF_BIG_ENTITY: "sensor.pv"}, {"small_source": "entity"}
     )
-    assert result["errors"] == {"base": "small_entity_required"}
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "screen"
+    assert result["errors"] == {CONF_SMALL_ENTITY: "small_entity_required"}
+    form = suggested(result["data_schema"])
+    assert form[CONF_BIG_ENTITY] == "sensor.pv"
+    result = await submit(hass, result, form | {CONF_SMALL_ENTITY: "sensor.hum"})
+    assert result["step_id"] == "check"
+    assert suggested(result["data_schema"])["advanced"]["small_source"] == "entity"
+    result = await submit(hass, result, suggested(result["data_schema"]))
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert stored(entry)[0].data[CONF_SMALL_ENTITY] == "sensor.hum"
+
+
+async def test_leaving_the_small_entity_empty_means_no_small_number(
+    hass: HomeAssistant,
+) -> None:
+    entry = await make_entry(hass)
+    result = await add(
+        hass, entry, {CONF_BIG_ENTITY: "sensor.pv"}, {"small_source": "entity"}
+    )
+    result = await submit(hass, result, suggested(result["data_schema"]))
+    result = await submit(hass, result, suggested(result["data_schema"]))
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert stored(entry)[0].data[CONF_SMALL_SOURCE] == "none"
+
+
+async def test_an_emptied_name_falls_back_to_the_big_entity_name(
+    hass: HomeAssistant,
+) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry)
+    schema_keys = {str(k): k for k in result["data_schema"].schema}
+    assert isinstance(schema_keys[CONF_TITLE], vol.Optional)
+    assert schema_keys[CONF_TITLE].description == {"suggested_value": "Screen 1"}
+    result = await submit(
+        hass,
+        result,
+        {CONF_BIG_ENTITY: "sensor.pv", CONF_UNIT: "none", "percent": False},
+    )
+    result = await submit(hass, result, {"advanced": {}})
+    assert stored(entry)[0].title == "PV"
 
 
 async def test_seconds_too_short(hass: HomeAssistant) -> None:
@@ -724,5 +766,5 @@ async def test_screen_step_fields(hass: HomeAssistant) -> None:
     assert set(fields) == {"title", "big_entity", "unit", "small_entity", "percent"}
     assert isinstance(fields["big_entity"], vol.Required)
     assert isinstance(fields["small_entity"], vol.Optional)
-    assert fields["title"].default() == "Screen 1"
+    assert fields["title"].description == {"suggested_value": "Screen 1"}
     assert result["data_schema"]({"big_entity": "sensor.pv"})["unit"] == "none"
