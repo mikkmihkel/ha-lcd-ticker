@@ -296,3 +296,17 @@ def test_default_title():
 
 def test_module_exports_base_screen():
     assert presets.BASE_SCREEN["preset"] == "custom"
+
+
+def test_show_when_and_takeover_defaults_and_fields():
+    assert BASE_SCREEN["show_when_entity"] is None
+    assert BASE_SCREEN["takeover"] is False
+    assert LOOK_FIELDS[-3:] == ("enabled", "show_when_entity", "takeover")
+    assert new_screen_data("price", 2)["show_when_entity"] is None
+
+
+def test_validate_look_takeover_needs_entity():
+    ok = new_screen_data("custom", 1)
+    assert validate_look(ok | {"takeover": True}) == {"base": "takeover_needs_entity"}
+    assert validate_look(ok | {"takeover": True, "show_when_entity": "x.y"}) == {}
+    assert validate_look(ok | {"show_when_entity": "x.y"}) == {}

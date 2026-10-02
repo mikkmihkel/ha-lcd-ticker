@@ -28,12 +28,14 @@ from .const import (
     CONF_PRODUCTION_ENTITY,
     CONF_SCREEN_ENABLED,
     CONF_SCREEN_SECONDS,
+    CONF_SHOW_WHEN,
     CONF_SMALL_CONVERT,
     CONF_SMALL_ENTITY,
     CONF_SMALL_FIXED,
     CONF_SMALL_MULTIPLIER,
     CONF_SMALL_OFFSET,
     CONF_SMALL_SOURCE,
+    CONF_TAKEOVER,
     CONF_TITLE,
     CONF_UNIT,
     CONF_VAT_PERCENT,
@@ -66,6 +68,8 @@ BASE_SCREEN: dict[str, Any] = {
     CONF_PRESET: PRESET_CUSTOM,
     CONF_POSITION: 1,
     CONF_SCREEN_ENABLED: True,
+    CONF_SHOW_WHEN: None,
+    CONF_TAKEOVER: False,
     CONF_SCREEN_SECONDS: 0,
     CONF_JUMP_DELTA: 0.0,
     CONF_BIG_ENTITY: None,
@@ -177,6 +181,8 @@ LOOK_FIELDS: tuple[str, ...] = (
     CONF_SCREEN_SECONDS,
     CONF_JUMP_DELTA,
     CONF_SCREEN_ENABLED,
+    CONF_SHOW_WHEN,
+    CONF_TAKEOVER,
 )
 
 _ENTITY_FIELDS = (
@@ -303,6 +309,8 @@ def validate_sources(
 def validate_look(data: Mapping[str, Any]) -> dict[str, str]:
     """Seconds are 0 or at least MIN_SECONDS; scale thresholds ascend."""
     errors: dict[str, str] = {}
+    if data.get(CONF_TAKEOVER) and not data.get(CONF_SHOW_WHEN):
+        errors["base"] = "takeover_needs_entity"
     if 0 < data.get(CONF_SCREEN_SECONDS, 0) < MIN_SECONDS:
         errors[CONF_SCREEN_SECONDS] = "seconds_too_short"
     if data.get(CONF_FACE_MODE) == FACE_MODE_SCALE:

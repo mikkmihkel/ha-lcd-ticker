@@ -51,6 +51,8 @@ from .const import (
     CONF_SCREEN_SECONDS,
     CONF_SECONDS,
     CONF_SECONDS_PRESENT,
+    CONF_SHOW_WHEN,
+    CONF_TAKEOVER,
     CONF_UNIT,
     DEFAULT_BUILTIN_SECONDS,
     DOMAIN,
@@ -167,6 +169,8 @@ class Scheduler:
         )
         self._slots: list[str] = []
         self._rebuild_slots()
+        self._known_rotation: list[str] = []
+        self._jump_slot: str | None = None
 
         self._lock = asyncio.Lock()
         self._unsub_tick: Callable[[], None] | None = None
@@ -248,6 +252,9 @@ class Scheduler:
             "mode": self._options.get(CONF_MODE),
             "current_slot": self.current_slot,
             "slots": list(self.slot_names().values()),
+            "eligible_slots": [names[s] for s in self._rotation_slots() if s in names]
+            if (names := self.slot_names())
+            else [],
             "last_payload": self._last_payload.hex() if self._last_payload else None,
             "last_success": self.last_success.isoformat()
             if self.last_success
@@ -264,13 +271,40 @@ class Scheduler:
         return [s for s in self._screens if s[2].get(CONF_SCREEN_ENABLED, True)]
 
     def _rebuild_slots(self) -> None:
-        enabled = [sid for sid, _, _ in self._enabled_screens()]
-        if self._options.get(CONF_MODE) == MODE_SINGLE:
-            self._slots = enabled[:1]
-            return
-        self._slots = enabled
-        if self._options.get(CONF_BUILTIN_IN_ROTATION):
+        self._slots = [sid for sid, _, _ in self._enabled_screens()]
+        if self._options.get(CONF_MODE) != MODE_SINGLE and self._options.get(
+            CONF_BUILTIN_IN_ROTATION
+        ):
             self._slots.append(BUILTIN_SLOT)
+
+    def _is_eligible(self, data: Mapping[str, Any]) -> bool:
+        """Enabled, and its "only show while on" entity (if any) is on."""
+        if not data.get(CONF_SCREEN_ENABLED, True):
+            return False
+        entity_id = data.get(CONF_SHOW_WHEN)
+        if not entity_id:
+            return True
+        state = self.hass.states.get(entity_id)
+        return state is not None and state.state in ACTIVE_STATES
+
+    def _rotation_slots(self) -> list[str]:
+        """Slots that may be shown now, in order. Take-over screens win."""
+        eligible = [
+            (sid, data) for sid, _, data in self._screens if self._is_eligible(data)
+        ]
+        takeover = [
+            sid
+            for sid, data in eligible
+            if data.get(CONF_TAKEOVER) and data.get(CONF_SHOW_WHEN)
+        ]
+        if takeover:
+            return takeover
+        slots = [sid for sid, _ in eligible]
+        if self._options.get(CONF_MODE) != MODE_SINGLE and self._options.get(
+            CONF_BUILTIN_IN_ROTATION
+        ):
+            slots.append(BUILTIN_SLOT)
+        return slots
 
     def _screen_data(self, slot: str) -> Mapping[str, Any] | None:
         for sid, _, data in self._screens:
@@ -427,6 +461,12 @@ class Scheduler:
         for key in (CONF_PRESENCE_ENTITY, CONF_ACTIVE_ENTITY):
             if self._options.get(key):
                 entity_ids.add(self._options[key])
+        entity_ids.update(
+            data[CONF_SHOW_WHEN]
+            for _, _, data in self._screens
+            if data.get(CONF_SHOW_WHEN)
+        )
+        self._known_rotation = self._rotation_slots()
         self._unsubs.append(
             async_track_time_interval(
                 self.hass,
@@ -500,10 +540,15 @@ class Scheduler:
 
     async def _tick_rotating(self, now: datetime.datetime, force: bool) -> None:
         count = len(self._slots)
+        jump, self._jump_slot = self._jump_slot, None
         if force and 0 <= self._index < count:
             candidates = [self._index]
         else:
-            candidates = [(self._index + step) % count for step in range(1, count + 1)]
+            rotation = self._rotation_slots()
+            order = [(self._index + step) % count for step in range(1, count + 1)]
+            candidates = [i for i in order if self._slots[i] in rotation]
+            if jump in rotation:
+                candidates.insert(0, self._slots.index(jump))
         for index in candidates:
             slot = self._slots[index]
             frame = self._render_slot(slot)
@@ -515,10 +560,12 @@ class Scheduler:
         self._schedule_after_write(self._next_due(now, self._options[CONF_SECONDS]))
 
     async def _tick_single(self, now: datetime.datetime, force: bool) -> None:
-        slot = self._slots[0] if self._slots else None
+        rotation = self._rotation_slots()
+        slot = rotation[0] if rotation else None
+        self._jump_slot = None
         frame = self._render_slot(slot) if slot else None
         if slot is not None and frame is not None:
-            self._index = 0
+            self._index = self._slots.index(slot)
             await self._async_write_frame(slot, frame, force)
         self._schedule_after_write(self._next_due(now, self._dwell(slot)))
 
@@ -651,8 +698,36 @@ class Scheduler:
             )
         if entity_id == self._options.get(CONF_ACTIVE_ENTITY):
             self._check_activity(dt_util.utcnow())
+        self._on_condition_change(entity_id)
         if self._jump_candidates(entity_id):
             self._spawn(self._async_jump(entity_id), "jump")
+
+    def _on_condition_change(self, entity_id: str) -> None:
+        """A screen's "only show while on" entity changed: react if the set did."""
+        if not any(
+            data.get(CONF_SHOW_WHEN) == entity_id for _, _, data in self._screens
+        ):
+            return
+        old, new = self._known_rotation, self._rotation_slots()
+        self._known_rotation = new
+        if not (self._active and self._ready) or new == old:
+            return
+        current = self.current_slot
+        arrived = [
+            sid
+            for sid in new
+            if sid not in old
+            and self._screen_data(sid) is not None
+            and self._screen_data(sid).get(CONF_TAKEOVER)
+        ]
+        if arrived:
+            self._jump_slot = arrived[0]
+        elif current is None or current not in old or current in new:
+            return
+        now = dt_util.utcnow()
+        target = self._earliest_write(now)
+        if self._tick_due is None or target < self._tick_due:
+            self._schedule_at(target)
 
     def _on_presence_change(self, was_present: bool, is_present: bool) -> None:
         now = dt_util.utcnow()
@@ -737,6 +812,7 @@ class Scheduler:
         current = self.current_slot
         self._options = dict(options)
         self._rebuild_slots()
+        self._known_rotation = self._rotation_slots()
         if mode_changed:
             self._index = -1
             self._last_payload = None

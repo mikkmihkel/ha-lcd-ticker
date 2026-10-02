@@ -38,6 +38,8 @@ from custom_components.lcd_ticker.const import (
     CONF_QUIET_START,
     CONF_SCREEN_ENABLED,
     CONF_SECONDS,
+    CONF_SHOW_WHEN,
+    CONF_TAKEOVER,
     CONF_UNIT,
     DOMAIN,
     FAILURES_FOR_ISSUE,
@@ -1128,3 +1130,280 @@ async def test_last_error_is_masked_and_truncated(hass, freezer, writer, run) ->
     scheduler = await run(screens=(screen("sensor.a"),))
     assert len(scheduler.last_error) == 255
     assert scheduler.last_error.startswith("dev_<address> x")
+
+
+# ---- show-when conditions and take-over -------------------------------------
+
+SAUNA = "binary_sensor.sauna_heating"
+DAY = "schedule.daytime"
+
+
+def cond(entity: str, **extra: Any) -> dict[str, Any]:
+    return {CONF_SHOW_WHEN: entity, **extra}
+
+
+def set_cond(hass: HomeAssistant, entity: str, state: str) -> None:
+    hass.states.async_set(entity, state)
+
+
+async def settle(hass: HomeAssistant) -> None:
+    await hass.async_block_till_done()
+    await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize(
+    ("state", "eligible"),
+    [
+        ("on", True),
+        ("home", True),
+        ("above_horizon", True),
+        ("off", False),
+        ("unavailable", False),
+        ("unknown", False),
+        (None, False),
+    ],
+)
+async def test_eligibility_by_state(hass, freezer, writer, run, state, eligible):
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    if state is not None:
+        set_cond(hass, SAUNA, state)
+    scheduler = await run(
+        screens=(screen("sensor.a", 1), screen("sensor.b", 2, **cond(SAUNA)))
+    )
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == ([1.0, 2.0] if eligible else [1.0])
+    assert (len(scheduler.diagnostics()["eligible_slots"]) == 2) is eligible
+
+
+async def test_disabled_screen_with_condition_on_stays_hidden(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_cond(hass, SAUNA, "on")
+    await run(
+        screens=(
+            screen("sensor.a", 1),
+            screen("sensor.b", 2, **cond(SAUNA, **{CONF_SCREEN_ENABLED: False})),
+        )
+    )
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0]
+
+
+async def test_takeover_shows_within_write_gap_and_resumes(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_value(hass, "sensor.s", "90")
+    set_cond(hass, SAUNA, "off")
+    options = {CONF_BUILTIN_IN_ROTATION: True}
+    await run(
+        options,
+        screens=(
+            screen("sensor.a", 1),
+            screen("sensor.b", 2),
+            screen("sensor.s", 3, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+        ),
+    )
+    assert bigs(writer) == [1.0]
+    await advance(hass, freezer, 20)
+    set_cond(hass, SAUNA, "on")
+    await settle(hass)
+    assert bigs(writer) == [1.0]  # not before the 60 s gap
+    await advance(hass, freezer, MIN_WRITE_GAP - 20)
+    assert bigs(writer) == [1.0, 90.0]  # long before a dwell
+    await advance(hass, freezer, DWELL)  # only take-over screens rotate, no built-in
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0, 90.0]  # unchanged value is not rewritten
+    set_cond(hass, SAUNA, "off")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer)[-1] == 0.0  # normal rotation: built-in follows the sauna
+    await advance(hass, freezer, 120)
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer)[-3:] == [0.0, 1.0, 2.0]
+
+
+async def test_takeover_without_condition_does_nothing(hass, freezer, writer, run):
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    await run(
+        screens=(screen("sensor.a", 1), screen("sensor.b", 2, **{CONF_TAKEOVER: True}))
+    )
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0, 2.0]
+
+
+async def test_takeover_jumps_to_the_screen_not_next(hass, freezer, writer, run):
+    for entity, value in (("sensor.a", "1"), ("sensor.b", "2"), ("sensor.s", "90")):
+        set_value(hass, entity, value)
+    set_cond(hass, SAUNA, "off")
+    await run(
+        screens=(
+            screen("sensor.a", 1),
+            screen("sensor.b", 2),
+            screen("sensor.s", 3, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+        )
+    )
+    set_cond(hass, SAUNA, "on")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer) == [1.0, 90.0]  # not 2.0 (the plain next screen)
+
+
+async def test_current_screen_becoming_ineligible_moves_on(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_cond(hass, SAUNA, "on")
+    await run(screens=(screen("sensor.a", 1, **cond(SAUNA)), screen("sensor.b", 2)))
+    assert bigs(writer) == [1.0]
+    await advance(hass, freezer, 10)
+    set_cond(hass, SAUNA, "off")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP - 10)
+    assert bigs(writer) == [1.0, 2.0]
+
+
+async def test_other_screen_becoming_ineligible_does_not_move_on(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_cond(hass, SAUNA, "on")
+    await run(screens=(screen("sensor.a", 1), screen("sensor.b", 2, **cond(SAUNA))))
+    await advance(hass, freezer, 10)
+    set_cond(hass, SAUNA, "off")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer) == [1.0]
+
+
+async def test_shrinking_set_never_raises(hass, freezer, writer, run) -> None:
+    for i, entity in enumerate(("a", "b", "c", "d"), 1):
+        set_value(hass, f"sensor.{entity}", str(i))
+    conds = ("binary_sensor.c1", "binary_sensor.c2", "binary_sensor.c3")
+    for c in conds:
+        set_cond(hass, c, "on")
+    scheduler = await run(
+        screens=(
+            screen("sensor.a", 1),
+            screen("sensor.b", 2, **cond(conds[0])),
+            screen("sensor.c", 3, **cond(conds[1])),
+            screen("sensor.d", 4, **cond(conds[2])),
+        )
+    )
+    await advance(hass, freezer, DWELL)
+    await advance(hass, freezer, DWELL)
+    await advance(hass, freezer, DWELL)  # d is up, index at the end
+    assert bigs(writer) == [1.0, 2.0, 3.0, 4.0]
+    for c in conds:
+        set_cond(hass, c, "off")
+    await settle(hass)
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer)[-1] == 1.0
+    assert scheduler.current_slot is not None
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer)[-1] == 1.0
+
+
+async def test_empty_set_writes_nothing_and_keeps_ticking(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_cond(hass, SAUNA, "on")
+    await run(screens=(screen("sensor.a", 1, **cond(SAUNA)),))
+    set_cond(hass, SAUNA, "off")
+    await settle(hass)
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0]
+    set_cond(hass, SAUNA, "on")
+    await settle(hass)
+    set_value(hass, "sensor.a", "5")
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0, 5.0]
+
+
+@pytest.mark.parametrize("mode_options", [{CONF_MODE: MODE_SINGLE}])
+async def test_single_mode_picks_takeover_else_first_eligible(
+    hass, freezer, writer, run, mode_options
+) -> None:
+    for entity, value in (("sensor.a", "1"), ("sensor.b", "2"), ("sensor.s", "90")):
+        set_value(hass, entity, value)
+    set_cond(hass, DAY, "off")
+    set_cond(hass, SAUNA, "off")
+    scheduler = await run(
+        mode_options,
+        screens=(
+            screen("sensor.a", 1, **cond(DAY)),
+            screen("sensor.b", 2),
+            screen("sensor.s", 3, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+        ),
+    )
+    assert bigs(writer) == [2.0]  # first eligible
+    set_cond(hass, DAY, "on")
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [2.0, 1.0]
+    set_cond(hass, SAUNA, "on")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer) == [2.0, 1.0, 90.0]
+    assert scheduler.current_screen_name == "S3"
+
+
+async def test_show_now_of_ineligible_screen_works(hass, freezer, writer, run):
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_cond(hass, SAUNA, "off")
+    scheduler = await run(
+        screens=(screen("sensor.a", 1), screen("sensor.b", 2, **cond(SAUNA)))
+    )
+    names = scheduler.slot_names()
+    assert list(names.values()) == ["S1", "S2"]  # select still lists every screen
+    slot_b = next(s for s, n in names.items() if n == "S2")
+    await scheduler.async_show_now(slot_b)
+    assert bigs(writer) == [1.0, 2.0]
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0, 2.0, 1.0]
+
+
+async def test_users_scenario(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.home", "21")
+    set_value(hass, "sensor.price", "9")
+    set_value(hass, "sensor.sauna", "55")
+    set_cond(hass, DAY, "off")
+    set_cond(hass, SAUNA, "off")
+    scheduler = await run(
+        screens=(
+            screen("sensor.home", 1),
+            screen("sensor.price", 2, **cond(DAY)),
+            screen("sensor.sauna", 3, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+        )
+    )
+    names = scheduler.diagnostics
+    assert names()["eligible_slots"] == ["S1"]  # night, sauna off: only Home
+    set_value(hass, "sensor.home", "22")
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [21.0, 22.0]
+    set_cond(hass, DAY, "on")  # day: Home and Price rotate
+    await settle(hass)
+    assert names()["eligible_slots"] == ["S1", "S2"]
+    await advance(hass, freezer, DWELL)
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer)[2:] == [9.0, 22.0]
+    set_cond(hass, SAUNA, "on")  # sauna: only Sauna
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer)[-1] == 55.0
+    assert names()["eligible_slots"] == ["S3"]
+    set_cond(hass, SAUNA, "off")  # back to Home and Price
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer)[-1] == 22.0
+    assert names()["eligible_slots"] == ["S1", "S2"]
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer)[-1] == 9.0

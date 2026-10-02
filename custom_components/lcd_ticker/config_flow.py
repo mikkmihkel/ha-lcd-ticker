@@ -76,12 +76,14 @@ from .const import (
     CONF_SCREEN_SECONDS,
     CONF_SECONDS,
     CONF_SECONDS_PRESENT,
+    CONF_SHOW_WHEN,
     CONF_SMALL_CONVERT,
     CONF_SMALL_ENTITY,
     CONF_SMALL_FIXED,
     CONF_SMALL_MULTIPLIER,
     CONF_SMALL_OFFSET,
     CONF_SMALL_SOURCE,
+    CONF_TAKEOVER,
     CONF_TITLE,
     CONF_UNIT,
     CONF_VAT_PERCENT,
@@ -130,6 +132,15 @@ _LOGGER = logging.getLogger(__name__)
 PVVX_OUI = "A4:C1:38"
 MANUAL = "manual"
 NUMERIC_DOMAINS = ["sensor", "input_number", "number"]
+SHOW_WHEN_DOMAINS = [
+    "binary_sensor",
+    "input_boolean",
+    "schedule",
+    "sun",
+    "person",
+    "device_tracker",
+    "switch",
+]
 
 _INT_FIELDS = (CONF_POSITION, CONF_SCREEN_SECONDS, CONF_SMALL_FIXED)
 _FLOAT_FIELDS = (
@@ -266,7 +277,9 @@ def _screen_selector(key: str, preset: str) -> Any:
         )
     if key == CONF_SCREEN_SECONDS:
         return _seconds(0)
-    if key in (CONF_PERCENT, CONF_BATTERY, CONF_SCREEN_ENABLED):
+    if key == CONF_SHOW_WHEN:
+        return _entity(SHOW_WHEN_DOMAINS)
+    if key in (CONF_PERCENT, CONF_BATTERY, CONF_SCREEN_ENABLED, CONF_TAKEOVER):
         return BooleanSelector()
     if key == CONF_TITLE:
         return TextSelector()
@@ -660,6 +673,7 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             for key in LOOK_FIELDS:
                 if key != CONF_TITLE and key in user_input:
                     data[key] = user_input[key]
+            data[CONF_SHOW_WHEN] = user_input.get(CONF_SHOW_WHEN) or None
             for key in _INT_FIELDS:
                 data[key] = int(data[key])
             for key in _FLOAT_FIELDS:
@@ -688,8 +702,15 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
 
         fields: dict[Any, Any] = {}
         for key in LOOK_FIELDS:
+            if key == CONF_SHOW_WHEN:  # optional, so the picker can be cleared
+                fields[vol.Optional(key)] = _screen_selector(key, preset)
+                continue
             default = title_default if key == CONF_TITLE else self._data[key]
             fields[vol.Required(key, default=default)] = _screen_selector(key, preset)
-        return self.async_show_form(
-            step_id="look", data_schema=vol.Schema(fields), errors=errors
+        schema = self.add_suggested_values_to_schema(
+            vol.Schema(fields),
+            {CONF_SHOW_WHEN: self._data[CONF_SHOW_WHEN]}
+            if self._data[CONF_SHOW_WHEN]
+            else {},
         )
+        return self.async_show_form(step_id="look", data_schema=schema, errors=errors)

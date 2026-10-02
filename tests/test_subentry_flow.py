@@ -27,7 +27,9 @@ from custom_components.lcd_ticker.const import (
     CONF_PRESET,
     CONF_PRODUCTION_ENTITY,
     CONF_SCREEN_SECONDS,
+    CONF_SHOW_WHEN,
     CONF_SMALL_ENTITY,
+    CONF_TAKEOVER,
     CONF_TITLE,
     CONF_UNIT,
     DOMAIN,
@@ -281,3 +283,77 @@ def test_scaling_fields_are_bounded(key: str) -> None:
     for value in (100001, -100001, 1e308):
         with pytest.raises(vol.Invalid):
             selector(value)
+
+
+async def test_look_stores_show_when_and_takeover(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await configure(
+        hass,
+        result,
+        {CONF_BIG_ENTITY: "sensor.price"},
+        {CONF_SHOW_WHEN: "binary_sensor.sauna", CONF_TAKEOVER: True},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (sub,) = stored(entry)
+    assert sub.data[CONF_SHOW_WHEN] == "binary_sensor.sauna"
+    assert sub.data[CONF_TAKEOVER] is True
+
+
+async def test_look_defaults_are_always_on(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await configure(hass, result, {CONF_BIG_ENTITY: "sensor.price"})
+    (sub,) = stored(entry)
+    assert sub.data[CONF_SHOW_WHEN] is None
+    assert sub.data[CONF_TAKEOVER] is False
+
+
+async def test_takeover_without_entity_is_an_error(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await configure(
+        hass, result, {CONF_BIG_ENTITY: "sensor.price"}, {CONF_TAKEOVER: True}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "takeover_needs_entity"}
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_TAKEOVER: False}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_reconfigure_keeps_and_clears_show_when(hass: HomeAssistant) -> None:
+    data = {
+        **new_screen_data("price", 1),
+        CONF_BIG_ENTITY: "sensor.price",
+        CONF_SHOW_WHEN: "binary_sensor.sauna",
+        CONF_TAKEOVER: True,
+    }
+    entry = await make_entry(hass, [("Old", data)])
+    (sub,) = stored(entry)
+
+    async def reconfigure(look):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_SCREEN),
+            context={"source": SOURCE_RECONFIGURE, "subentry_id": sub.subentry_id},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_BIG_ENTITY: "sensor.price"}
+        )
+        assert result["step_id"] == "look"
+        return await hass.config_entries.subentries.async_configure(
+            result["flow_id"], look
+        )
+
+    result = await reconfigure({CONF_SHOW_WHEN: "binary_sensor.sauna"})
+    assert result["reason"] == "reconfigure_successful"
+    (sub,) = stored(entry)
+    assert sub.data[CONF_SHOW_WHEN] == "binary_sensor.sauna"
+    assert sub.data[CONF_TAKEOVER] is True
+
+    result = await reconfigure({CONF_TAKEOVER: False})  # field left out = cleared
+    assert result["reason"] == "reconfigure_successful"
+    (sub,) = stored(entry)
+    assert sub.data[CONF_SHOW_WHEN] is None
+    assert sub.data[CONF_TAKEOVER] is False
