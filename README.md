@@ -1,125 +1,117 @@
 # LCD Ticker
 
-Show any Home Assistant value on a Xiaomi LYWSD03MMC thermometer running [pvvx](https://github.com/pvvx/ATC_MiThermometer) firmware: solar power, room climate, the electricity price, averages. It rotates between screens and keeps the CR2032 battery in mind. Everything is set up in the Home Assistant UI.
+**Turn a cheap Xiaomi thermometer into a tiny Home Assistant display.**
+
+LCD Ticker shows any Home Assistant value on the LCD of a Xiaomi **LYWSD03MMC** running [pvvx firmware](https://github.com/pvvx/ATC_MiThermometer). Examples: solar output, the temperature in another room, an average of several sensors, or the electricity price in cents. It can rotate between several screens, and it's careful with the coin cell. Everything is set up in the Home Assistant UI, with no YAML.
 
 <p align="center">
-  <img src="docs/images/solar-meter.jpg" alt="Thermometer showing 5.7 kW solar output and 98 % self-consumption" width="480">
+  <img src="docs/images/solar-meter.jpg" alt="Thermometer showing 5.7 kW solar output and 98 % self-consumption" width="420">
 </p>
 
-*Photo: jozefpis, from [xiaomi-LYWSD03MMC-to-solar-meter](https://github.com/jozefpis/xiaomi-LYWSD03MMC-to-solar-meter).*
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mikkmihkel&repository=ha-lcd-ticker&category=integration)
 
-No extra Python packages, no network. It only talks to the thermometer over Bluetooth through Home Assistant.
+## Quick start
 
-## Requirements
+1. **Flash pvvx firmware** onto the thermometer from your browser (see [below](#flash-the-firmware)).
+2. **Install LCD Ticker.** Use the HACS button above, then **Download** → restart Home Assistant. For a manual install, unzip `lcd_ticker.zip` from the [latest release](https://github.com/mikkmihkel/ha-lcd-ticker/releases) into `config/custom_components/lcd_ticker/` and restart.
+3. **Add the thermometer.** Go to **Settings → Devices & services**. It shows up as a discovered `ATC_xxxxxx`. If it doesn't, use **Add integration → LCD Ticker**.
+4. **Pick a battery profile.** A test smiley `(^_^)` appears on the LCD, which confirms the connection works.
+5. **Add screen.** Choose a preset, pick your entities, and save. The LCD updates within a few seconds.
 
-- Home Assistant 2026.3 or newer.
-- A Bluetooth adapter that can make connections (a Raspberry Pi's built-in one works, and so do ESPHome Bluetooth proxies).
-- A LYWSD03MMC with pvvx firmware (checked against [v5.7](https://github.com/pvvx/ATC_MiThermometer/releases/tag/v5.7)).
+You need Home Assistant **2026.3+** and Bluetooth that can make connections. A Raspberry Pi's built-in Bluetooth works, and so does an ESPHome Bluetooth proxy.
 
-## Flash the firmware
+## What you can show
 
-> **Risk.** pvvx is third-party firmware. A failed flash can leave the thermometer unusable. You flash at your own risk.
-
-1. Open the [Telink flasher](https://pvvx.github.io/ATC_MiThermometer/TelinkMiFlasher.html) in Chrome or Edge.
-2. **Connect** and pick `LYWSD03MMC`, then **Do Activation** and wait for *Login successful*.
-3. Under *Custom Firmware* choose the pvvx firmware and **Start Flashing**.
-
-Afterwards it advertises as `ATC_` plus six hex digits of its MAC. Other hardware or stock firmware versions may need extra steps; see the pvvx README.
-
-## Install
-
-**A. Manual.** Download `lcd_ticker.zip` from the latest [GitHub release](https://github.com/mikkmihkel/ha-lcd-ticker/releases), unzip it into `config/custom_components/lcd_ticker/` and restart Home Assistant.
-
-**B. HACS.** Add `https://github.com/mikkmihkel/ha-lcd-ticker` as a custom repository of type Integration, install **LCD Ticker** and restart. HACS needs the repository to be public.
-
-## Set up
-
-1. **Settings → Devices & services**: a flashed `ATC_xxxxxx` is discovered. Otherwise **Add integration → LCD Ticker** and pick it or enter its MAC.
-2. Confirm the name and a **battery profile**. A test smiley `(^_^)` checks the connection.
-3. **Add screen**, pick a preset and its entities, then the look: unit symbol, `%`, battery icon, face, position and optional seconds on screen.
-
-The LCD cannot show text, so give each screen something different (unit, `%`, battery icon, brackets or a fixed small number). You get a warning if two screens look the same. Edit a screen from the integration page with **Edit screen**.
-
-## Presets
-
-| Preset | Big number | Small number | Look |
+| Preset | Big number | Small number | Face |
 |---|---|---|---|
-| solar | Production in kW | Self-consumption % = (production − export) / production, or your own % sensor | `%`, face by small number (higher is better, 20/40/60/80) |
-| climate | Temperature in °C | Humidity % | `°C`, `%` |
-| price | Price in c/kWh, VAT added (read from the sensor's unit) | Optional entity | Face by big number (lower is better, 5/10/15/20 c) |
-| single | One entity, your own conversion | Fixed number: the screen's position when created | Your choice |
-| custom | Everything manual | Everything manual | Everything manual |
+| **Solar** | Production in kW | Self-consumption % | Happier the more you use yourself |
+| **Room climate** | Temperature °C | Humidity % | – |
+| **Electricity price** | Price in c/kWh, with VAT added | Optional, e.g. next price | Happy when cheap |
+| **Single value** | Any numeric entity | Screen number | Your choice |
+| **Custom** | Anything, with your own multiplier, offset and units | Anything | Your choice |
 
-A screen can also **show immediately** when its big number changes by at least a set amount.
+Notes on the presets:
+- **Units convert automatically.** W becomes kW, °F becomes °C, and EUR/MWh becomes c/kWh.
+- **Nord Pool prices** from the built-in integration come without VAT. Set your VAT % on the price screen.
+- **For averages, minimums or sums**, create a *Min/Max* or *Statistics* helper in Home Assistant, then pick it as the screen's entity.
 
-## Modes and "If HA stops"
+The LCD shows only digits and a few symbols, so give each screen a marker you'll recognise: a unit symbol (°C, °F, `-`, `_`, `=`), the `%` sign, the battery icon, or a face. You get a warning if two screens look identical.
 
-- **Single screen + built-in reading**: the thermometer alternates your first screen with its own temperature and humidity.
-- **Rotating screens**: LCD Ticker switches between your enabled screens; the built-in reading can be one slot.
+## How screens and battery work
 
-If Home Assistant stops (rotating mode): **Freeze** keeps the last screen until Home Assistant is back; **Alternate** alternates each screen with the built-in reading and falls back to it.
+Each thermometer has one of two modes:
+- **Single screen + built-in reading.** The thermometer alternates your value with its own temperature and humidity. This costs no extra battery.
+- **Rotating screens.** LCD Ticker cycles through your screens. You can add the thermometer's own reading as one of them.
 
-## Battery
+Every change on the LCD is one short Bluetooth connection. To keep the battery steady:
+- A screen is written only when what it shows actually changes.
+- Automatic writes are at least **60 seconds** apart.
+- **Configure** shows the expected updates per hour for your settings and warns above 30.
 
-Every update is one Bluetooth connection. LCD Ticker skips a write when the screen would not change, and **writes never come closer than 60 seconds** (except when you press Refresh, pick a screen, or call the action). **Configure** shows the expected updates per hour and warns above 30.
-
-| Profile | Seconds per screen | While present |
+| Battery profile | Seconds per screen | While someone is present |
 |---|---|---|
 | Eco | 900 | 300 |
-| Balanced (default) | 480 | 180 |
+| **Balanced** (default) | 480 | 180 |
 | Responsive | 180 | 90 |
 
-"Present" means your presence entity is on or home, and for 10 minutes after. You can pause at night with quiet hours or an *active* entity; the LCD then shows the built-in reading, zeros or the last screen.
+Optional settings:
+- **Faster when present.** Pick a motion sensor or person, and screens rotate faster while it's on.
+- **Quiet hours** or an **only active when** entity (for example "solar producing"). While inactive, nothing is sent, and the LCD shows its own reading, zeros or the last screen.
+- **Show immediately on big change.** Per screen: jump to it when its value changes a lot.
+- **If Home Assistant stops**, the display either freezes on the last screen or falls back to its own reading.
 
-## Entities
+## Controls in Home Assistant
 
-| Entity | Notes |
-|---|---|
-| Rotation (switch) | Turns updates on or off |
-| Mode, Screen (select) | Selecting a screen shows it now |
-| Seconds per screen, while present (number) | 30 to 3600 |
-| Refresh now (button) | Rewrites the current screen |
-| Last update, Updates in the last hour, Estimated updates per hour, Last error (sensor) | Last error is disabled by default |
-| Reachable (binary sensor) | Off after a failed write |
+Each thermometer gets its own device with these entities:
+- **Rotation** (switch)
+- **Mode** (select)
+- **Screen** (select, pick one to show it now)
+- **Seconds per screen** and **Seconds per screen while present** (number)
+- **Refresh now** (button)
+- **Last update**, **Updates in the last hour** and **Estimated updates per hour** (sensors)
+- **Reachable** (binary sensor)
+- **Last error** (sensor, off by default)
 
-## Action `lcd_ticker.show`
+They all work on dashboards and in automations.
 
-Sends a frame directly; the next scheduled screen overwrites it, so turn Rotation off for a lasting value.
+To send a one-off value from an automation:
 
 ```yaml
 action: lcd_ticker.show
 data:
-  address: "A4:C1:38:XX:XX:XX"   # or device_id
+  address: "A4:C1:38:XX:XX:XX"   # or device_id: pick the thermometer in the UI editor
   big: 5.7
   small: 98
   percent: true
   happy: true
-  bracket: true
-  validity: 65535
+  validity: 65535                # 65535 = keep it; default 900 seconds
 ```
 
-Fields: `device_id` or `address`, `big`, `small`, `validity` (default 900; 65535 = until reboot), `unit`, `percent`, `battery`, `happy`, `sad`, `bracket`. Details are in [docs/reference.md](docs/reference.md).
+The next scheduled screen replaces it, so turn **Rotation** off first if you want it to stay. Coming from `pvvx_display`? Rename `pvvx_display.show` to `lcd_ticker.show`; the fields are the same. All fields, symbols and faces are listed in [docs/reference.md](docs/reference.md).
 
-Coming from `pvvx_display`: rename `pvvx_display.show` to `lcd_ticker.show`; the fields are the same.
+## Flash the firmware
 
-Averages and sums: create a Min/Max or Statistics helper and pick it as a screen entity.
+> pvvx is third-party firmware. Flashing is at your own risk.
+
+1. Open the [Telink flasher](https://pvvx.github.io/ATC_MiThermometer/TelinkMiFlasher.html) in Chrome or Edge on a computer with Bluetooth.
+2. Click **Connect**, pick `LYWSD03MMC`, click **Do Activation**, and wait for *Login successful*.
+3. Under *Custom Firmware*, choose the latest pvvx build (tested with [v5.7](https://github.com/pvvx/ATC_MiThermometer/releases/tag/v5.7)) and click **Start Flashing**.
+
+Afterwards the thermometer is named `ATC_` plus six characters of its MAC. Some hardware revisions need extra steps; see the [pvvx README](https://github.com/pvvx/ATC_MiThermometer#readme).
 
 ## Troubleshooting
 
-- **"Could not reach the thermometer"**: move it closer to the adapter and check that the adapter supports active connections.
-- **The LCD alternates with temperature and humidity**: expected with a validity below 65535 (Single mode, Alternate). Pvvx settings such as `show_batt_enabled` can add battery or clock stages.
-- **A screen shows 1999 or -99**: values are capped to what the LCD can show; check the screen's conversion and multiplier.
-- **Battery %**: the thermometer's own BTHome device (same MAC) shows it, not the LCD Ticker device.
-- **Deleting your last screen**: turn Rotation off first, otherwise the LCD keeps the last value.
+- **"Could not reach the thermometer"**: move it closer to the Bluetooth adapter or proxy, and check that the adapter supports connections, not just scanning.
+- **It alternates with temperature/humidity**: that's normal in *Single screen + built-in* mode and with *If HA stops → Alternate*. The pvvx settings `show_batt_enabled` and `show_time_smile` can add battery or clock steps.
+- **Shows 1999 or -99**: the value is beyond what the LCD can show. Check the screen's conversion and multiplier.
+- **Where is the battery level?** On the thermometer's own BTHome device in Home Assistant (same MAC).
+- **Deleting your last screen**: turn **Rotation** off first, or the LCD keeps the last value.
+- **Reporting a bug**: attach the integration's **diagnostics** download. The MAC address is removed from it.
 
-Attach the **diagnostics** download to bug reports; the MAC is redacted.
+To remove the integration, delete the thermometer under **Settings → Devices & services → LCD Ticker**. A value sent with validity 65535 stays on the LCD until the thermometer restarts, so take the battery out for a moment.
 
-## Remove
+## Credits
 
-Delete the thermometer under **Settings → Devices & services → LCD Ticker**. A frozen frame (validity 65535) stays until the thermometer reboots, so briefly take out the battery.
+Built on the idea and code of [jozefpis/xiaomi-LYWSD03MMC-to-solar-meter](https://github.com/jozefpis/xiaomi-LYWSD03MMC-to-solar-meter) (MIT, photo above). Thanks to [pvvx](https://github.com/pvvx/ATC_MiThermometer) for the firmware and flasher, and to the ESPHome [`pvvx_mithermometer`](https://esphome.io/components/display/pvvx_mithermometer.html) component as a protocol reference. Not affiliated with Xiaomi or pvvx.
 
-## Credits and license
-
-Based on [jozefpis/xiaomi-LYWSD03MMC-to-solar-meter](https://github.com/jozefpis/xiaomi-LYWSD03MMC-to-solar-meter) (MIT). Thanks to [pvvx/ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) for the firmware and flasher, and to the ESPHome [`pvvx_mithermometer`](https://esphome.io/components/display/pvvx_mithermometer.html) component as a protocol reference. Not affiliated with Xiaomi or pvvx.
-
-MIT. See [LICENSE](LICENSE).
+License: [MIT](LICENSE).
