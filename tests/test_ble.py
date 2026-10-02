@@ -292,3 +292,102 @@ def test_normalize_address() -> None:
     assert normalize_address("A4C138FE8D4") is None
     assert normalize_address("MAC A4C138FE8D46") is None
     assert normalize_address("") is None
+
+
+def _client() -> MagicMock:
+    c = MagicMock()
+    c.write_gatt_char = AsyncMock()
+    c.disconnect = AsyncMock()
+    c.clear_cache = AsyncMock(return_value=True)
+    return c
+
+
+async def test_stale_service_cache_is_cleared_and_retried_once(hass):
+    """A stale GATT cache gives 'characteristic not found'; clear it and retry."""
+    from bleak.exc import BleakCharacteristicNotFoundError
+
+    stale, fresh = _client(), _client()
+    stale.write_gatt_char.side_effect = BleakCharacteristicNotFoundError(CHAR_UUID)
+    connect = AsyncMock(side_effect=[stale, fresh])
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(name="dev"),
+        ),
+        patch("custom_components.lcd_ticker.ble.establish_connection", connect),
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+    stale.clear_cache.assert_awaited_once()
+    stale.disconnect.assert_awaited_once()
+    assert connect.await_count == 2
+    assert connect.await_args_list[1].kwargs["use_services_cache"] is False
+    fresh.write_gatt_char.assert_awaited_once_with(CHAR_UUID, b"\x01", response=False)
+    fresh.disconnect.assert_awaited_once()
+
+
+async def test_missing_characteristic_after_fresh_lookup_fails_clearly(hass):
+    from bleak.exc import BleakCharacteristicNotFoundError
+
+    first, second = _client(), _client()
+    for c in (first, second):
+        c.write_gatt_char.side_effect = BleakCharacteristicNotFoundError(CHAR_UUID)
+    connect = AsyncMock(side_effect=[first, second])
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(name="dev"),
+        ),
+        patch("custom_components.lcd_ticker.ble.establish_connection", connect),
+        pytest.raises(WriteFailed, match="pvvx"),
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+    assert connect.await_count == 2
+    second.disconnect.assert_awaited_once()
+
+
+def test_write_timeout_leaves_room_for_connection_retries():
+    from custom_components.lcd_ticker.const import WRITE_TIMEOUT
+
+    # bleak-retry-connector allows ~20 s per connection attempt.
+    assert WRITE_TIMEOUT >= 60
+
+
+async def test_connects_with_the_client_class_installed_at_runtime(hass, client):
+    """HA swaps in its own client class after import; look it up when connecting."""
+    import bleak_retry_connector
+
+    sentinel = type("HaClient", (), {})
+    connect = AsyncMock(return_value=client)
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            return_value=MagicMock(name="dev"),
+        ),
+        patch("custom_components.lcd_ticker.ble.establish_connection", connect),
+        patch.object(bleak_retry_connector, "BleakClientWithServiceCache", sentinel),
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+    assert connect.await_args.args[0] is sentinel
+
+
+async def test_stale_cache_falls_back_to_bluez_clear_and_refetches_device(hass):
+    from bleak.exc import BleakCharacteristicNotFoundError
+
+    stale, fresh = _client(), _client()
+    stale.clear_cache.return_value = False  # class without HA's clear_cache support
+    stale.write_gatt_char.side_effect = BleakCharacteristicNotFoundError(CHAR_UUID)
+    connect = AsyncMock(side_effect=[stale, fresh])
+    first_dev, second_dev = MagicMock(name="dev1"), MagicMock(name="dev2")
+    bluez_clear = AsyncMock(return_value=True)
+    with (
+        patch(
+            "custom_components.lcd_ticker.ble.bluetooth.async_ble_device_from_address",
+            side_effect=[first_dev, second_dev],
+        ),
+        patch("custom_components.lcd_ticker.ble.establish_connection", connect),
+        patch("custom_components.lcd_ticker.ble.clear_bluez_cache", bluez_clear),
+    ):
+        await BleWriter(hass).async_write(ADDR, [b"\x01"])
+    bluez_clear.assert_awaited_once_with(ADDR.upper())
+    assert connect.await_args_list[1].args[1] is second_dev
+    fresh.write_gatt_char.assert_awaited_once()

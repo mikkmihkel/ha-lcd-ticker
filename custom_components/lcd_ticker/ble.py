@@ -8,8 +8,10 @@ import contextlib
 import logging
 import re
 
-from bleak.exc import BleakError
-from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from bleak.backends.device import BLEDevice
+from bleak.exc import BleakCharacteristicNotFoundError, BleakError
+import bleak_retry_connector
+from bleak_retry_connector import clear_cache as clear_bluez_cache, establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -82,20 +84,58 @@ class BleWriter:
         )
         if device is None:
             raise DeviceUnreachable("not in Bluetooth range or not connectable")
+        try:
+            await self._connect_and_write(address, device, frames, use_cache=True)
+        except BleakCharacteristicNotFoundError:
+            # A stale or incomplete GATT cache (e.g. from before the pvvx flash) hides
+            # the display characteristic. Look the services up fresh, once.
+            _LOGGER.debug("display characteristic missing, retrying without cache")
+            device = (
+                bluetooth.async_ble_device_from_address(
+                    self._hass, address, connectable=True
+                )
+                or device
+            )
+            try:
+                await self._connect_and_write(address, device, frames, use_cache=False)
+            except BleakCharacteristicNotFoundError as err:
+                raise WriteFailed(
+                    "the thermometer has no display characteristic; "
+                    "check that the pvvx firmware is installed"
+                ) from err
+
+    async def _connect_and_write(
+        self,
+        address: str,
+        device: BLEDevice,
+        frames: Sequence[bytes],
+        *,
+        use_cache: bool,
+    ) -> None:
         client = None
         try:
+            # Looked up at call time: Home Assistant installs its own client class
+            # (with working cache clearing) after this module is imported.
             client = await establish_connection(
-                BleakClientWithServiceCache,
+                bleak_retry_connector.BleakClientWithServiceCache,
                 device,
                 device.name or "thermometer",
                 max_attempts=CONNECT_ATTEMPTS,
+                use_services_cache=use_cache,
             )
-            for frame in frames:
-                await client.write_gatt_char(CHAR_UUID, frame, response=False)
+            try:
+                for frame in frames:
+                    await client.write_gatt_char(CHAR_UUID, frame, response=False)
+            except BleakCharacteristicNotFoundError:
+                with contextlib.suppress(Exception):
+                    if not await client.clear_cache():
+                        await clear_bluez_cache(address)
+                raise
             _LOGGER.debug("wrote %d frame(s)", len(frames))
+        except BleakCharacteristicNotFoundError:
+            raise
         except (BleakError, OSError, EOFError) as err:
-            msg = mask_address(str(err)) or type(err).__name__
-            raise WriteFailed(msg) from err
+            raise WriteFailed(mask_address(str(err)) or type(err).__name__) from err
         finally:
             if client is not None:
                 # Disconnect is best effort; a failure there must never hide the real result
