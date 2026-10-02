@@ -200,6 +200,7 @@ class Scheduler:
 
         self.last_success: datetime.datetime | None = None
         self.last_error: str | None = None
+        self.last_frame: DisplayFrame | None = None
         self.reachable: bool | None = None
 
     # ---- read-only state -------------------------------------------------
@@ -596,7 +597,7 @@ class Scheduler:
         payload = build_ext_frame(frame)
         if not must and payload == self._last_payload and not self._is_stale(frame):
             return True
-        if await self._async_send(payload):
+        if await self._async_send(payload, frame):
             self._last_payload = payload
             if slot is not None and slot != BUILTIN_SLOT:
                 self._last_big[slot] = frame.big
@@ -612,7 +613,7 @@ class Scheduler:
         age = (dt_util.utcnow() - self._last_success_at).total_seconds()
         return age > frame.validity * 2 / 3
 
-    async def _async_send(self, payload: bytes) -> bool:
+    async def _async_send(self, payload: bytes, frame: DisplayFrame) -> bool:
         """Write once. Never raises, never retries."""
         now = dt_util.utcnow()
         self._last_write_at = now
@@ -623,13 +624,14 @@ class Scheduler:
         except Exception as err:
             self._record_failure(err, unexpected=True)
         else:
-            self._record_success(now)
+            self._record_success(now, frame)
             return True
         finally:
             self._notify()
         return False
 
-    def _record_success(self, now: datetime.datetime) -> None:
+    def _record_success(self, now: datetime.datetime, frame: DisplayFrame) -> None:
+        self.last_frame = frame
         self.last_success = now
         self._last_success_at = now
         self.reachable = True

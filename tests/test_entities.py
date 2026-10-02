@@ -262,3 +262,45 @@ async def test_signal_strength_value_when_enabled(
     bluetooth_mock.advert(ADVERT_A, rssi=-71)
     await hass.async_block_till_done()
     assert hass.states.get(eid).state == "-71"
+
+
+async def test_display_sensor(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, setup_entry, writer: FakeWriter
+) -> None:
+    eid = entity_id(hass, "sensor", "display")
+    assert hass.states.get(eid).state == STATE_UNKNOWN
+    hass.states.async_set("sensor.power", "12.44", {"unit_of_measurement": "kW"})
+
+    await advance(hass, freezer, RELOAD_DELAY)
+    state = hass.states.get(eid)
+    assert state.state == "12.4 | 0"
+    assert state.attributes["screen"] == "Power"
+    assert state.attributes["big"] == pytest.approx(12.44)
+    assert state.attributes["small"] == 0
+    assert state.attributes["unit"] == "none"
+    assert state.attributes["face"] == "none"
+    assert state.attributes["percent"] is False
+    assert state.attributes["battery"] is False
+    assert state.attributes["validity"] == 65535
+
+    hass.states.async_set("sensor.power", "250.4", {"unit_of_measurement": "kW"})
+    await hass.services.async_call(
+        "button",
+        "press",
+        {"entity_id": entity_id(hass, "button", "refresh")},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).state == "250 | 0"
+
+
+async def test_display_sensor_builtin(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, setup_entry
+) -> None:
+    from custom_components.lcd_ticker.protocol import DisplayFrame
+
+    eid = entity_id(hass, "sensor", "display")
+    scheduler = setup_entry.runtime_data.scheduler
+    await scheduler._async_write_frame(None, DisplayFrame(validity=1), True)
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).state == "built-in reading"

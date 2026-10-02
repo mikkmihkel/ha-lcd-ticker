@@ -185,7 +185,8 @@ FACE_SOURCE_OPTIONS: Final = [FACE_SOURCE_BIG, FACE_SOURCE_SMALL]
 
 DIRECTION_HIGHER: Final = "higher_better"
 DIRECTION_LOWER: Final = "lower_better"
-DIRECTION_OPTIONS: Final = [DIRECTION_HIGHER, DIRECTION_LOWER]
+DIRECTION_MIDDLE: Final = "middle_best"
+DIRECTION_OPTIONS: Final = [DIRECTION_HIGHER, DIRECTION_LOWER, DIRECTION_MIDDLE]
 
 # Self-consumption is 0 below this production (W), as in the upstream example.
 SELF_CONSUMPTION_MIN_W: Final = 50

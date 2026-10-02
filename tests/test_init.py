@@ -49,6 +49,7 @@ ENTITIES = [
     ("sensor", "updates_last_hour"),
     ("sensor", "estimated_updates_per_hour"),
     ("sensor", "last_error"),
+    ("sensor", "display"),
     ("binary_sensor", "reachable"),
     ("sensor", "temperature"),
     ("sensor", "humidity"),

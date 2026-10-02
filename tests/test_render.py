@@ -10,13 +10,16 @@ from custom_components.lcd_ticker.const import (
     CONVERT_NONE,
     DIRECTION_HIGHER,
     DIRECTION_LOWER,
+    DIRECTION_MIDDLE,
 )
 from custom_components.lcd_ticker.protocol import Face, Unit
 from custom_components.lcd_ticker.render import (
     SourceValue,
     can_convert,
     convert,
+    describe_screen,
     face_for,
+    format_big,
     markers,
     parse_number,
     price_factor,
@@ -315,3 +318,83 @@ def test_render_overflowing_self_consumption_returns_none():
         "sensor.export": SourceValue("0", "W"),
     }
     assert render(SOLAR, values, 65535) is None
+
+
+@pytest.mark.parametrize(
+    ("value", "face"),
+    [
+        (10, Face.SAD_BRACKET),
+        (29.9, Face.SAD_BRACKET),
+        (30, Face.HAPPY_SAD),
+        (35, Face.HAPPY_SAD),
+        (40, Face.HAPPY_BRACKET),
+        (50, Face.HAPPY_BRACKET),
+        (60, Face.HAPPY_BRACKET),
+        (65, Face.HAPPY_SAD),
+        (70, Face.HAPPY_SAD),
+        (70.1, Face.SAD_BRACKET),
+        (95, Face.SAD_BRACKET),
+    ],
+)
+def test_face_middle_is_best(value, face):
+    assert face_for(value, DIRECTION_MIDDLE, [30, 40, 60, 70]) is face
+
+
+def test_face_middle_sorts_thresholds_first():
+    assert face_for(50, DIRECTION_MIDDLE, [70, 30, 60, 40]) is Face.HAPPY_BRACKET
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [(12.44, "12.4"), (-9.5, "-9.5"), (199.5, "199.5"), (199.6, "200"), (-9.6, "-10")],
+)
+def test_format_big(value, text):
+    assert format_big(value) == text
+
+
+def test_user_multiplier_and_offset_are_used():
+    screen = {
+        "big_entity": "sensor.t",
+        "big_convert": CONVERT_NONE,
+        "big_multiplier": 2,
+        "big_offset": 1,
+    }
+    frame = render(screen, {"sensor.t": SourceValue("10", None)}, 65535)
+    assert frame.big == 21
+
+
+PRICE_SCREEN = {
+    "big_entity": "sensor.np",
+    "big_convert": CONVERT_CENTS_KWH,
+    "vat_percent": 24,
+    "unit": "deg_c",
+    "face_mode": "fixed",
+    "face_fixed": "happy_sad",
+}
+
+
+def test_describe_screen_shows_value_symbols_and_source():
+    text = describe_screen(
+        PRICE_SCREEN, {"sensor.np": SourceValue("0.1234", "EUR/kWh")}
+    )
+    assert "big 15.3" in text
+    assert "small 0" in text
+    assert "face \u0394\u25b3\u0394" in text
+    assert "\u00b0C" in text
+    assert "from 0.1234 EUR/kWh" in text
+
+
+def test_describe_screen_omits_none_parts():
+    screen = {"big_entity": "sensor.t"}
+    assert (
+        describe_screen(screen, {"sensor.t": SourceValue("5", None)})
+        == "big 5.0 \u00b7 small 0 \u00b7 from 5"
+    )
+
+
+def test_describe_screen_nothing_when_unusable():
+    text = describe_screen(
+        PRICE_SCREEN, {"sensor.np": SourceValue("unavailable", None)}
+    )
+    assert text.startswith("nothing (an entity is unavailable")
+    assert describe_screen(PRICE_SCREEN, {}).startswith("nothing")

@@ -20,6 +20,7 @@
       "refresh": { "default": "mdi:refresh" }
     },
     "sensor": {
+      "display": { "default": "mdi:monitor-eye" },
       "updates_last_hour": { "default": "mdi:bluetooth-transfer" },
       "estimated_updates_per_hour": { "default": "mdi:battery-clock" },
       "last_error": { "default": "mdi:alert-circle-outline" }

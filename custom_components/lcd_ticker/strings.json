@@ -144,7 +144,7 @@
         },
         "look": {
           "title": "How the screen looks",
-          "description": "The LCD cannot show text, so give each screen something unique: a unit symbol, the % sign, the battery icon, a face or a fixed small number.",
+          "description": "The LCD cannot show text, so give each screen something unique: a unit symbol, the % sign, the battery icon, a face or a fixed small number.\n\n**Right now this screen shows:** {preview}",
           "data": {
             "title": "Screen name",
             "unit": "Symbol next to the big number",
@@ -166,7 +166,7 @@
             "takeover": "Show only this screen while it is on"
           },
           "data_description": {
-            "face_t1": "Scale faces, best to worst: (^_^) · ^_^ · Δ△Δ · -∧- · (-∧-). With higher is better, a value at or above threshold 4 gets the best face. With lower is better, a value at or below threshold 1 does.",
+            "face_t1": "Scale faces, best to worst: (^_^) · ^_^ · Δ△Δ · -∧- · (-∧-). Higher is better: a value at or above threshold 4 gets the best face. Lower is better: a value at or below threshold 1 does. Middle is best (for example humidity): between thresholds 2 and 3 gets (^_^), between 1 and 2 or 3 and 4 gets Δ△Δ, and outside thresholds 1 to 4 gets (-∧-).",
             "seconds": "0 uses the thermometer's speed.",
             "jump_delta": "0 turns this off. Never writes more than once a minute.",
             "show_when_entity": "Optional. For example a Threshold helper \"sauna above 40 °C\" or a Schedule helper for daytime. Counts as on when its state is on, home or above_horizon.",
@@ -291,7 +291,8 @@
     "face_direction": {
       "options": {
         "higher_better": "Higher is better",
-        "lower_better": "Lower is better"
+        "lower_better": "Lower is better",
+        "middle_best": "Middle is best (comfort range)"
       }
     }
   },
@@ -338,6 +339,9 @@
       },
       "last_error": {
         "name": "Last error"
+      },
+      "display": {
+        "name": "Display"
       }
     },
     "switch": {

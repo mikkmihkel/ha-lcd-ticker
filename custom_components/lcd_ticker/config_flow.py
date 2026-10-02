@@ -123,7 +123,7 @@ from .presets import (
     validate_sources,
 )
 from .protocol import FACE_KEYS, UNIT_KEYS, DisplayFrame, Face, build_ext_frame
-from .render import markers
+from .render import SourceValue, describe_screen, markers, screen_entity_ids
 from .scheduler import estimate_updates_per_hour
 
 _LOGGER = logging.getLogger(__name__)
@@ -661,6 +661,19 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             name = state.name if state is not None else entity_id
         return default_title(self._data[CONF_PRESET], name)
 
+    def _preview(self) -> str:
+        """What the LCD would show right now for the screen set up so far."""
+        values: dict[str, SourceValue] = {}
+        for entity_id in screen_entity_ids(self._data):
+            if (state := self.hass.states.get(entity_id)) is not None:
+                values[entity_id] = SourceValue(
+                    state.state, state.attributes.get("unit_of_measurement")
+                )
+        try:
+            return describe_screen(self._data, values)
+        except Exception:  # never break the form over a preview
+            return "nothing (the preview could not be calculated)"
+
     async def async_step_look(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
@@ -713,4 +726,9 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             if self._data[CONF_SHOW_WHEN]
             else {},
         )
-        return self.async_show_form(step_id="look", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="look",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"preview": self._preview()},
+        )

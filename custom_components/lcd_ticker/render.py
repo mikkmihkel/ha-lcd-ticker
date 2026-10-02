@@ -40,6 +40,7 @@ from .const import (
     DECIMALS_AUTO,
     DIRECTION_HIGHER,
     DIRECTION_LOWER,
+    DIRECTION_MIDDLE,
     FACE_MODE_FIXED,
     FACE_MODE_NONE,
     FACE_MODE_SCALE,
@@ -52,7 +53,16 @@ from .const import (
     SMALL_NONE,
     SMALL_SELF_CONSUMPTION,
 )
-from .protocol import FACE_KEYS, UNIT_KEYS, DisplayFrame, Face, Unit, round_half_away
+from .protocol import (
+    BIG_MAX,
+    BIG_MIN,
+    FACE_KEYS,
+    UNIT_KEYS,
+    DisplayFrame,
+    Face,
+    Unit,
+    round_half_away,
+)
 
 DEFAULT_THRESHOLDS = (20, 40, 60, 80)
 _CENT_NAMES = frozenset(
@@ -123,6 +133,12 @@ def convert(value: float, unit: str | None, target: str) -> float | None:
 def face_for(value: float, direction: str, thresholds: Sequence[float]) -> Face:
     """Pick a smiley for value from four thresholds (sorted first)."""
     t1, t2, t3, t4 = sorted(thresholds)
+    if direction == DIRECTION_MIDDLE:
+        if t2 <= value <= t3:
+            return Face.HAPPY_BRACKET
+        if t1 <= value <= t4:
+            return Face.HAPPY_SAD
+        return Face.SAD_BRACKET
     if direction == DIRECTION_LOWER:
         if value <= t1:
             return Face.HAPPY_BRACKET
@@ -142,6 +158,55 @@ def face_for(value: float, direction: str, thresholds: Sequence[float]) -> Face:
     if value >= t1:
         return Face.SAD
     return Face.SAD_BRACKET
+
+
+def format_big(value: float) -> str:
+    """The big number as the LCD shows it: one decimal up to 199.5, else whole."""
+    value = max(BIG_MIN, min(BIG_MAX, value))
+    if -9.5 <= value <= 199.5:
+        return f"{value:.1f}"
+    return str(round_half_away(value))
+
+
+# Same symbols as the face and unit choices in strings.json.
+_FACE_SYMBOLS = {
+    "happy": "^_^",
+    "sad": "-\u2227-",
+    "happy_sad": "\u0394\u25b3\u0394",
+    "bracket": "( )",
+    "happy_bracket": "(^_^)",
+    "sad_bracket": "(-\u2227-)",
+    "happy_sad_bracket": "(\u0394\u25b3\u0394)",
+}
+_UNIT_SYMBOLS = {
+    "deg_ghe": "\u00b0\u0413",
+    "minus": "-",
+    "deg_f": "\u00b0F",
+    "lowdash": "_",
+    "deg_c": "\u00b0C",
+    "lines": "=",
+    "deg_e": "\u00b0E",
+}
+
+
+def describe_screen(
+    screen: Mapping[str, Any], values: Mapping[str, SourceValue]
+) -> str:
+    """One line telling what the screen would show now, for the setup preview."""
+    source = values.get(screen.get(CONF_BIG_ENTITY))
+    raw = f"from {source.state} {source.unit or ''}".strip() if source else None
+    frame = render(screen, values, 65535)
+    if frame is None:
+        parts = ["nothing (an entity is unavailable or its unit can't be converted)"]
+    else:
+        parts = [f"big {format_big(frame.big)}", f"small {frame.small}"]
+        if (face := _FACE_SYMBOLS.get(frame.face.name.lower())) is not None:
+            parts.append(f"face {face}")
+        if (unit := _UNIT_SYMBOLS.get(frame.unit.name.lower())) is not None:
+            parts.append(unit)
+    if raw:
+        parts.append(raw)
+    return " \u00b7 ".join(parts)
 
 
 def screen_entity_ids(screen: Mapping[str, Any]) -> list[str]:

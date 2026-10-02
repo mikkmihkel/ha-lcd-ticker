@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -21,9 +22,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import signal_readings
+from .const import VALIDITY_BUILTIN, signal_readings
 from .entity import LcdTickerEntity
 from .models import LcdTickerConfigEntry
+from .render import format_big
 
 PARALLEL_UPDATES = 0
 
@@ -77,6 +79,7 @@ async def async_setup_entry(
 ) -> None:
     async_add_entities(
         [
+            DisplaySensor(entry),
             LastUpdateSensor(entry),
             UpdatesLastHourSensor(entry),
             EstimatedUpdatesSensor(entry),
@@ -84,6 +87,38 @@ async def async_setup_entry(
             *(ReadingSensor(entry, description) for description in READINGS),
         ]
     )
+
+
+class DisplaySensor(LcdTickerEntity, SensorEntity):
+    """What the LCD shows now (the last frame written)."""
+
+    def __init__(self, entry: LcdTickerConfigEntry) -> None:
+        super().__init__(entry, "display")
+
+    @property
+    def native_value(self) -> str | None:
+        frame = self.scheduler.last_frame
+        if frame is None:
+            return None
+        if frame.validity == VALIDITY_BUILTIN:
+            return "built-in reading"
+        return f"{format_big(frame.big)} | {frame.small}"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        frame = self.scheduler.last_frame
+        if frame is None:
+            return None
+        return {
+            "screen": self.scheduler.current_screen_name,
+            "big": frame.big,
+            "small": frame.small,
+            "unit": frame.unit.name.lower(),
+            "face": frame.face.name.lower(),
+            "percent": frame.percent,
+            "battery": frame.battery,
+            "validity": frame.validity,
+        }
 
 
 class LastUpdateSensor(LcdTickerEntity, SensorEntity):

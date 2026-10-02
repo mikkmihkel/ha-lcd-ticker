@@ -310,3 +310,48 @@ def test_validate_look_takeover_needs_entity():
     assert validate_look(ok | {"takeover": True}) == {"base": "takeover_needs_entity"}
     assert validate_look(ok | {"takeover": True, "show_when_entity": "x.y"}) == {}
     assert validate_look(ok | {"show_when_entity": "x.y"}) == {}
+
+
+@pytest.mark.parametrize("preset", ["solar", "climate", "price"])
+def test_conversion_fields_in_every_preset(preset):
+    for key in ("big_convert", "big_multiplier", "big_offset", "big_decimals"):
+        assert key in SOURCE_FIELDS[preset]
+    assert SOURCE_FIELDS[preset][0] == "big_entity"
+
+
+def test_price_keeps_vat_field():
+    assert "vat_percent" in SOURCE_FIELDS["price"]
+
+
+def test_user_conversion_choices_survive_apply_sources():
+    out = apply_sources(
+        "price",
+        new_screen_data("price", 1),
+        {"big_entity": "sensor.p", "big_convert": "none", "big_multiplier": 3.0},
+    )
+    assert out["big_convert"] == "none"
+    out = apply_sources(
+        "solar",
+        new_screen_data("solar", 1),
+        {"big_entity": "sensor.p", "big_convert": "none", "big_offset": 2.0},
+    )
+    assert out["big_convert"] == "none"
+    assert out["big_offset"] == 2.0
+
+
+def test_user_multiplier_reaches_render():
+    data = apply_sources(
+        "price",
+        new_screen_data("price", 1),
+        {"big_entity": "sensor.price", "big_multiplier": 2.0, "big_offset": 1.0},
+    )
+    frame = render(data, {"sensor.price": SourceValue("0.1", "EUR/kWh")}, 65535)
+    assert frame.big == pytest.approx(21.0)
+
+
+def test_climate_defaults_to_humidity_comfort_range():
+    data = new_screen_data("climate", 1)
+    assert data["face_mode"] == "scale"
+    assert data["face_source"] == "small"
+    assert data["face_direction"] == "middle_best"
+    assert [data[f"face_t{i}"] for i in range(1, 5)] == [30.0, 40.0, 60.0, 70.0]

@@ -25,12 +25,13 @@ You need Home Assistant **2026.3+** and Bluetooth that can make connections. A R
 | Preset | Big number | Small number | Face |
 |---|---|---|---|
 | **Solar** | Production in kW | Self-consumption % | Happier the more you use yourself |
-| **Room climate** | Temperature °C | Humidity % | – |
+| **Room climate** | Temperature °C | Humidity % | Happy while humidity is in the comfort range (40–60 %), sad when too dry or too humid |
 | **Electricity price** | Price in c/kWh, with VAT added | Optional, e.g. next price | Happy when cheap |
 | **Single value** | Any numeric entity | Screen number | Your choice |
 | **Custom** | Anything, with your own multiplier, offset and units | Anything | Your choice |
 
 Notes on the presets:
+- **Each screen's setup shows a live preview of what the LCD will display.**
 - **Units convert automatically.** W becomes kW, °F becomes °C, and EUR/MWh becomes c/kWh.
 - **Nord Pool prices** from the built-in integration come without VAT. Set your VAT % on the price screen.
 - **For averages, minimums or sums**, create a *Min/Max* or *Statistics* helper in Home Assistant, then pick it as the screen's entity.

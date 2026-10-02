@@ -357,3 +357,46 @@ async def test_reconfigure_keeps_and_clears_show_when(hass: HomeAssistant) -> No
     (sub,) = stored(entry)
     assert sub.data[CONF_SHOW_WHEN] is None
     assert sub.data[CONF_TAKEOVER] is False
+
+
+async def test_look_step_shows_live_preview(hass: HomeAssistant) -> None:
+    hass.states.async_set(
+        "sensor.nordpool", "0.1234", {"unit_of_measurement": "EUR/kWh"}
+    )
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_BIG_ENTITY: "sensor.nordpool", "vat_percent": 24}
+    )
+    assert result["step_id"] == "look"
+    preview = result["description_placeholders"]["preview"]
+    assert "big 15.3" in preview
+    assert "from 0.1234 EUR/kWh" in preview
+
+
+async def test_look_step_preview_when_unavailable(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_BIG_ENTITY: "sensor.price"}
+    )
+    hass.states.async_set("sensor.price", "unavailable")
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_SCREEN_SECONDS: 10}
+    )
+    assert result["errors"] == {CONF_SCREEN_SECONDS: "seconds_too_short"}
+    assert result["description_placeholders"]["preview"].startswith("nothing")
+
+
+async def test_look_step_preview_survives_a_render_error(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    with patch(
+        "custom_components.lcd_ticker.config_flow.describe_screen",
+        side_effect=ValueError,
+    ):
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {CONF_BIG_ENTITY: "sensor.price"}
+        )
+    assert result["step_id"] == "look"
+    assert "could not be calculated" in result["description_placeholders"]["preview"]
