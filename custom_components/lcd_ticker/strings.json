@@ -1,0 +1,374 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Choose a thermometer",
+        "description": "Pick a nearby thermometer running pvvx firmware, or enter its MAC address.",
+        "data": {
+          "address": "Thermometer"
+        }
+      },
+      "manual": {
+        "title": "Enter MAC address",
+        "data": {
+          "address": "MAC address"
+        },
+        "data_description": {
+          "address": "For example A4:C1:38:12:34:56. Shown in the pvvx flasher and in the Bluetooth integration."
+        }
+      },
+      "confirm": {
+        "title": "Set up {name}",
+        "description": "LCD Ticker will send a test smiley `(^_^)` to the thermometer. It appears within a few seconds and stays for about 10 seconds.",
+        "data": {
+          "name": "Name",
+          "profile": "Battery profile"
+        },
+        "data_description": {
+          "profile": "How often screens change. Eco saves the most battery, Responsive updates fastest. You can change this later."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the thermometer. Move it closer to your Bluetooth adapter and make sure the adapter supports active connections, then try again.",
+      "invalid_address": "This is not a valid MAC address."
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "already_in_progress": "[%key:common::config_flow::abort::already_in_progress%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Display settings",
+        "description": "Current settings: about {per_hour} updates per hour, {per_hour_present} while someone is present. Each update is one Bluetooth connection and uses some battery. Writes are skipped when the screen would not change, so the real number is usually lower.",
+        "data": {
+          "profile": "Battery profile",
+          "mode": "Mode",
+          "enabled": "Rotation on",
+          "seconds_per_screen": "Seconds per screen",
+          "presence_entity": "Faster when this is on",
+          "seconds_per_screen_present": "Seconds per screen while present",
+          "builtin_in_rotation": "Include the built-in temperature/humidity reading",
+          "builtin_seconds": "Seconds for the built-in reading",
+          "active_entity": "Only active when this is on",
+          "quiet_start": "Quiet hours start",
+          "quiet_end": "Quiet hours end",
+          "inactive_display": "When inactive, show",
+          "on_ha_stop": "If Home Assistant stops"
+        },
+        "data_description": {
+          "profile": "Choosing Eco, Balanced or Responsive sets both speeds. Editing a speed switches to Custom.",
+          "mode": "Single screen + built-in: the thermometer alternates your first screen with its own reading at no extra cost. Rotating: LCD Ticker switches between your screens.",
+          "presence_entity": "For example a motion sensor or a person. Screens change faster while it is on and for 10 minutes after.",
+          "active_entity": "For example a binary sensor that is on while solar panels produce. Counts as active when its state is on, home or above_horizon.",
+          "on_ha_stop": "Rotating mode only. Freeze keeps the last screen until Home Assistant is back. Alternate shows each screen alternating with the built-in reading and falls back to the built-in reading if Home Assistant stops."
+        }
+      }
+    },
+    "error": {
+      "high_update_rate": "These settings mean about {per_hour} updates per hour, which drains the battery quickly. Submit again to save anyway.",
+      "quiet_hours_incomplete": "Set both a start and an end for quiet hours, or neither."
+    }
+  },
+  "config_subentries": {
+    "screen": {
+      "entry_type": "Screen",
+      "initiate_flow": {
+        "user": "Add screen",
+        "reconfigure": "Edit screen"
+      },
+      "step": {
+        "user": {
+          "title": "Add a screen",
+          "description": "Start from a preset. You pick the entities next.",
+          "data": {
+            "preset": "Preset"
+          }
+        },
+        "sources": {
+          "title": "Where the numbers come from",
+          "description": "The big number shows one decimal up to 199.5 and whole numbers up to 1999. The small number shows whole numbers from -9 to 99. Values outside are capped.",
+          "data": {
+            "big_entity": "Big number",
+            "big_convert": "Convert big number to",
+            "big_multiplier": "Big number multiplier",
+            "big_offset": "Big number offset",
+            "big_decimals": "Big number decimals",
+            "vat_percent": "VAT %",
+            "small_source": "Small number shows",
+            "small_entity": "Small number",
+            "small_convert": "Convert small number to",
+            "small_multiplier": "Small number multiplier",
+            "small_offset": "Small number offset",
+            "small_fixed": "Fixed small number",
+            "production_entity": "Solar production",
+            "export_entity": "Grid export"
+          },
+          "data_description": {
+            "big_convert": "Converts using the sensor's own unit, for example W to kW or EUR/MWh to c/kWh.",
+            "vat_percent": "Added to prices converted to c/kWh. The core Nord Pool integration reports prices without VAT.",
+            "small_fixed": "A screen number helps you tell screens apart.",
+            "export_entity": "Self-consumption % = (production − export) / production.",
+            "small_entity": "Optional. For solar, pick an existing self-consumption % sensor instead of grid export."
+          }
+        },
+        "look": {
+          "title": "How the screen looks",
+          "description": "The LCD cannot show text, so give each screen something unique: a unit symbol, the % sign, the battery icon, a face or a fixed small number.",
+          "data": {
+            "title": "Screen name",
+            "unit": "Symbol next to the big number",
+            "percent": "% sign next to the small number",
+            "battery": "Battery icon",
+            "face_mode": "Face",
+            "face_fixed": "Fixed face",
+            "face_source": "Face follows",
+            "face_direction": "Direction",
+            "face_t1": "Threshold 1",
+            "face_t2": "Threshold 2",
+            "face_t3": "Threshold 3",
+            "face_t4": "Threshold 4",
+            "position": "Position in rotation",
+            "seconds": "Seconds on screen",
+            "jump_delta": "Show immediately when the big number changes by",
+            "enabled": "Enabled"
+          },
+          "data_description": {
+            "face_t1": "Scale faces, best to worst: (^_^) · ^_^ · Δ△Δ · -∧- · (-∧-). With higher is better, a value at or above threshold 4 gets the best face. With lower is better, a value at or below threshold 1 does.",
+            "seconds": "0 uses the thermometer's speed.",
+            "jump_delta": "0 turns this off. Never writes more than once a minute."
+          }
+        }
+      },
+      "error": {
+        "unit_not_supported": "This sensor's unit cannot be converted to the selected unit.",
+        "unit_unknown": "This sensor has no unit yet, so it cannot be converted. Choose no conversion or wait until the sensor reports a value.",
+        "solar_small_required": "Pick either grid export or a self-consumption % sensor.",
+        "small_entity_required": "Pick the entity for the small number.",
+        "production_required": "Pick the solar production sensor.",
+        "thresholds_order": "Thresholds must go from lowest (1) to highest (4).",
+        "duplicate_markers": "Another screen looks exactly like this one on the LCD. Submit again to keep it anyway."
+      },
+      "abort": {
+        "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+      }
+    }
+  },
+  "selector": {
+    "profile": {
+      "options": {
+        "eco": "Eco (15 min, 5 min when present)",
+        "balanced": "Balanced (8 min, 3 min when present)",
+        "responsive": "Responsive (3 min, 90 s when present)",
+        "custom": "Custom"
+      }
+    },
+    "mode": {
+      "options": {
+        "single_builtin": "Single screen + built-in reading",
+        "rotating": "Rotating screens"
+      }
+    },
+    "inactive_display": {
+      "options": {
+        "builtin": "The built-in reading",
+        "zeros": "Zeros",
+        "leave": "Leave the last screen"
+      }
+    },
+    "on_ha_stop": {
+      "options": {
+        "freeze": "Freeze the last screen",
+        "alternate": "Alternate with the built-in reading"
+      }
+    },
+    "preset": {
+      "options": {
+        "solar": "Solar: kW and self-consumption %",
+        "climate": "Room climate: °C and humidity %",
+        "price": "Electricity price: c/kWh",
+        "single": "Single value",
+        "custom": "Custom"
+      }
+    },
+    "convert": {
+      "options": {
+        "none": "No conversion",
+        "kw": "kW",
+        "celsius": "°C",
+        "fahrenheit": "°F",
+        "cents_per_kwh": "Cents per kWh"
+      }
+    },
+    "decimals": {
+      "options": {
+        "auto": "Automatic",
+        "0": "None",
+        "1": "One"
+      }
+    },
+    "small_source": {
+      "options": {
+        "none": "Nothing (0)",
+        "entity": "An entity",
+        "fixed": "A fixed number",
+        "self_consumption": "Solar self-consumption %"
+      }
+    },
+    "unit": {
+      "options": {
+        "none": "None",
+        "deg_ghe": "°Г",
+        "minus": "-",
+        "deg_f": "°F",
+        "lowdash": "_",
+        "deg_c": "°C",
+        "lines": "=",
+        "deg_e": "°E"
+      }
+    },
+    "face_mode": {
+      "options": {
+        "none": "No face",
+        "fixed": "Always the same face",
+        "scale": "Depends on the value"
+      }
+    },
+    "face": {
+      "options": {
+        "none": "None",
+        "happy": "^_^",
+        "sad": "-∧-",
+        "happy_sad": "Δ△Δ",
+        "bracket": "( )",
+        "happy_bracket": "(^_^)",
+        "sad_bracket": "(-∧-)",
+        "happy_sad_bracket": "(Δ△Δ)"
+      }
+    },
+    "face_source": {
+      "options": {
+        "big": "Big number",
+        "small": "Small number"
+      }
+    },
+    "face_direction": {
+      "options": {
+        "higher_better": "Higher is better",
+        "lower_better": "Lower is better"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "reachable": {
+        "name": "Reachable"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh now"
+      }
+    },
+    "number": {
+      "seconds_per_screen": {
+        "name": "Seconds per screen"
+      },
+      "seconds_per_screen_present": {
+        "name": "Seconds per screen while present"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "single_builtin": "[%key:component::lcd_ticker::selector::mode::options::single_builtin%]",
+          "rotating": "[%key:component::lcd_ticker::selector::mode::options::rotating%]"
+        }
+      },
+      "screen": {
+        "name": "Screen"
+      }
+    },
+    "sensor": {
+      "last_update": {
+        "name": "Last update"
+      },
+      "updates_last_hour": {
+        "name": "Updates in the last hour"
+      },
+      "estimated_updates_per_hour": {
+        "name": "Estimated updates per hour"
+      },
+      "last_error": {
+        "name": "Last error"
+      }
+    },
+    "switch": {
+      "rotation": {
+        "name": "Rotation"
+      }
+    }
+  },
+  "issues": {
+    "unreachable": {
+      "title": "{name} is unreachable",
+      "description": "LCD Ticker has not been able to update {name} for a while. Check that the thermometer is in range of your Bluetooth adapter and that its battery is not empty. This message disappears after the next successful update."
+    }
+  },
+  "services": {
+    "show": {
+      "name": "Show values",
+      "description": "Sends a raw frame to a thermometer. Compatible with pvvx_display.show. The next scheduled screen overwrites it unless rotation is off.",
+      "fields": {
+        "device_id": {
+          "name": "Thermometer",
+          "description": "A thermometer set up in LCD Ticker."
+        },
+        "address": {
+          "name": "BLE address",
+          "description": "MAC address, for thermometers that are not set up. Use either this or the thermometer."
+        },
+        "big": {
+          "name": "Big number",
+          "description": "-99.5 to 1999.5."
+        },
+        "small": {
+          "name": "Small number",
+          "description": "-9 to 99, whole number."
+        },
+        "validity": {
+          "name": "Validity (s)",
+          "description": "How long the thermometer shows this frame. 65535 = permanently (until reboot). Shorter values alternate with the built-in reading."
+        },
+        "unit": {
+          "name": "Big number unit",
+          "description": "Symbol next to the big number."
+        },
+        "percent": {
+          "name": "% sign",
+          "description": "Show % next to the small number."
+        },
+        "battery": {
+          "name": "Battery icon",
+          "description": "Show the battery icon."
+        },
+        "happy": {
+          "name": "Happy face",
+          "description": "Combine happy, sad and bracket into a face."
+        },
+        "sad": {
+          "name": "Sad face",
+          "description": "Combine happy, sad and bracket into a face."
+        },
+        "bracket": {
+          "name": "Brackets",
+          "description": "Brackets around the face."
+        }
+      }
+    }
+  }
+}

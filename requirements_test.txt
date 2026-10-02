@@ -1,0 +1,4 @@
+# Exact pins, checked 2026-10-02. Dependabot proposes updates.
+pytest-homeassistant-custom-component==0.13.367
+ruff==0.16.10
+pytest-cov==7.1.0
