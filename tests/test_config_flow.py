@@ -239,3 +239,81 @@ async def test_manual_already_configured(
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        "A4C138FE8D46",
+        "a4c138fe8d46",
+        "a4:c1:38:fe:8d:46",
+        "A4-C1-38-FE-8D-46",
+        "a4 c1 38 fe 8d 46",
+        " A4.C1.38.FE.8D.46 ",
+    ],
+)
+async def test_manual_accepts_common_mac_formats(
+    hass: HomeAssistant, writer, discovered, typed: str
+) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ADDRESS: typed}
+    )
+    assert result["step_id"] == "confirm"
+    assert result["description_placeholders"] == {"name": "ATC_FE8D46"}
+
+
+@pytest.mark.parametrize(
+    "typed", ["xyz", "A4C138FE8D4", "A4C138FE8D461", "G4C138FE8D46"]
+)
+async def test_manual_rejects_bad_macs(
+    hass: HomeAssistant, writer, discovered, typed: str
+) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ADDRESS: typed}
+    )
+    assert result["errors"] == {CONF_ADDRESS: "invalid_address"}
+
+
+async def test_bluetooth_discovery_by_bthome_advert_without_name(
+    hass: HomeAssistant, writer
+) -> None:
+    """pvvx sends its name rarely; a nameless BTHome advert must still be discovered."""
+    info = service_info("A4:C1:38:FE:8D:46", "A4:C1:38:FE:8D:46")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=info
+    )
+    assert result["step_id"] == "confirm"
+    assert result["description_placeholders"] == {"name": "ATC_FE8D46"}
+
+
+async def test_bluetooth_discovery_ignores_other_bthome_devices(
+    hass: HomeAssistant, writer
+) -> None:
+    info = service_info("11:22:33:44:55:66", "SBBT-002C")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=info
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_supported"
+
+
+async def test_user_step_lists_nameless_pvvx_device(
+    hass: HomeAssistant, writer, discovered
+) -> None:
+    discovered.return_value = [
+        service_info("A4:C1:38:FE:8D:46", ""),
+        service_info("11:22:33:44:55:66", "SBBT-002C"),
+    ]
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    assert result["step_id"] == "user"
+    options = result["data_schema"].schema[CONF_ADDRESS].config["options"]
+    assert [o["value"] for o in options] == ["A4:C1:38:FE:8D:46", "manual"]
+    assert options[0]["label"] == "ATC_FE8D46 (A4:C1:38:FE:8D:46)"

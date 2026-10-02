@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-02
+
+### Fixed
+
+- The MAC address field accepts every common spelling, including `A4C138FE8D46` as shown by the Telink flasher (also in `lcd_ticker.show`).
+- Thermometers are discovered as quickly as BTHome finds them, even before they send their `ATC_` name. Other BTHome devices are ignored.
+
 ## [0.1.0] - 2026-10-02
 
 ### Added

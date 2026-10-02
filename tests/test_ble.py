@@ -281,3 +281,14 @@ async def test_bluez_style_error_is_masked(hass):
     ):
         await BleWriter(hass).async_write(ADDR, [b"\x01"])
     assert "A4_C1" not in str(err.value)
+
+
+def test_normalize_address() -> None:
+    from custom_components.lcd_ticker.ble import normalize_address
+
+    assert normalize_address("a4c138fe8d46") == "A4:C1:38:FE:8D:46"
+    assert normalize_address(" A4-C1-38-FE-8D-46 ") == "A4:C1:38:FE:8D:46"
+    assert normalize_address("a4 c1 38 fe 8d 46") == "A4:C1:38:FE:8D:46"
+    assert normalize_address("A4C138FE8D4") is None
+    assert normalize_address("MAC A4C138FE8D46") is None
+    assert normalize_address("") is None

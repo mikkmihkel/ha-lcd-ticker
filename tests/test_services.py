@@ -129,3 +129,12 @@ async def test_show_small_rounds_half_away_from_zero(
 ) -> None:
     await call(hass, {"address": ADDR, "small": small})
     assert int.from_bytes(writer.writes[0][3:5], "little", signed=True) == expected
+
+
+async def test_show_accepts_mac_without_separators(
+    hass: HomeAssistant,
+    setup_entry,
+    writer: FakeWriter,
+) -> None:
+    await call(hass, {"address": ADDR.replace(":", "").lower(), "big": 1})
+    assert len(writer.writes) == 1

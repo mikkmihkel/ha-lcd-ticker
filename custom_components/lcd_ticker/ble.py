@@ -31,6 +31,22 @@ _MAC_RE = re.compile(r"(?i)([0-9a-f]{2}[:_-]){5}[0-9a-f]{2}")
 WRITER_KEY: HassKey[BleWriter] = HassKey(f"{DOMAIN}_writer")
 
 
+_SEPARATORS_RE = re.compile(r"[\s:._-]")
+_HEX12_RE = re.compile(r"^[0-9A-F]{12}$")
+
+
+def normalize_address(raw: str) -> str | None:
+    """Return AA:BB:CC:DD:EE:FF for any common MAC spelling, or None.
+
+    Accepts upper or lower case with ':', '-', '.', '_', spaces or no separators
+    (the pvvx Telink flasher shows A4C138FE8D46).
+    """
+    digits = _SEPARATORS_RE.sub("", raw).upper()
+    if not _HEX12_RE.match(digits):
+        return None
+    return ":".join(digits[i : i + 2] for i in range(0, 12, 2))
+
+
 def mask_address(text: str) -> str:
     """Hide any MAC address in text."""
     return _MAC_RE.sub("<address>", text)

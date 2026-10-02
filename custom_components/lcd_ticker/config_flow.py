@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import logging
-import re
 from typing import Any
 
 from homeassistant.components.bluetooth import (
@@ -39,7 +38,7 @@ from homeassistant.helpers.selector import (
 )
 import voluptuous as vol
 
-from .ble import DeviceUnreachable, WriteFailed, get_writer
+from .ble import DeviceUnreachable, WriteFailed, get_writer, normalize_address
 from .const import (
     CONF_ACTIVE_ENTITY,
     CONF_ADDRESS,
@@ -127,7 +126,8 @@ from .scheduler import estimate_updates_per_hour
 
 _LOGGER = logging.getLogger(__name__)
 
-MAC_PATTERN = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
+# Telink OUI used by LYWSD03MMC thermometers.
+PVVX_OUI = "A4:C1:38"
 MANUAL = "manual"
 NUMERIC_DOMAINS = ["sensor", "input_number", "number"]
 
@@ -273,12 +273,25 @@ def _screen_selector(key: str, preset: str) -> Any:
     raise ValueError(f"No selector for {key}")  # pragma: no cover
 
 
-def _normalize_address(raw: str) -> str:
-    return raw.strip().upper().replace("-", ":")
-
-
 def _name_for(address: str) -> str:
     return f"{DEFAULT_NAME_PREFIX}{address.replace(':', '')[-6:]}"
+
+
+def _is_thermometer(info: BluetoothServiceInfoBleak) -> bool:
+    """pvvx thermometers: ATC_ name, or the LYWSD03MMC address prefix.
+
+    The name is only sent now and then, while BTHome adverts come every few
+    seconds, so the address prefix lets discovery match as fast as BTHome does.
+    """
+    return info.name.startswith(DEFAULT_NAME_PREFIX) or info.address.upper().startswith(
+        PVVX_OUI
+    )
+
+
+def _display_name(info: BluetoothServiceInfoBleak) -> str:
+    if info.name.startswith(DEFAULT_NAME_PREFIX):
+        return info.name
+    return _name_for(info.address.upper())
 
 
 class LcdTickerConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -313,8 +326,10 @@ class LcdTickerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
+        if not _is_thermometer(discovery_info):
+            return self.async_abort(reason="not_supported")
         return await self._select_device(
-            discovery_info.address.upper(), discovery_info.name
+            discovery_info.address.upper(), _display_name(discovery_info)
         )
 
     async def async_step_user(
@@ -322,10 +337,9 @@ class LcdTickerConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         configured = self._async_current_ids(include_ignore=False)
         found = {
-            info.address.upper(): info.name
+            info.address.upper(): _display_name(info)
             for info in async_discovered_service_info(self.hass, connectable=True)
-            if info.name.startswith(DEFAULT_NAME_PREFIX)
-            and info.address.upper() not in configured
+            if _is_thermometer(info) and info.address.upper() not in configured
         }
         if not found:
             return await self.async_step_manual()
@@ -359,8 +373,8 @@ class LcdTickerConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            address = _normalize_address(user_input[CONF_ADDRESS])
-            if MAC_PATTERN.match(address):
+            address = normalize_address(user_input[CONF_ADDRESS])
+            if address is not None:
                 return await self._select_device(address, _name_for(address))
             errors[CONF_ADDRESS] = "invalid_address"
         schema = vol.Schema({vol.Required(CONF_ADDRESS): TextSelector()})

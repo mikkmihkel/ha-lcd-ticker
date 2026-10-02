@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import re
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -11,7 +10,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 import voluptuous as vol
 
-from .ble import get_writer
+from .ble import get_writer, normalize_address
 from .const import CONF_ADDRESS, DOMAIN
 from .protocol import (
     UNIT_KEYS,
@@ -20,8 +19,6 @@ from .protocol import (
     face_from_flags,
     round_half_away,
 )
-
-MAC_RE = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
 
 
 def _finite(value: float) -> float:
@@ -74,8 +71,8 @@ async def _async_show(call: ServiceCall) -> None:
     if "device_id" in data:
         address = _address_from_device(hass, data["device_id"])
     else:
-        address = data[CONF_ADDRESS].strip().upper()
-        if not MAC_RE.match(address):
+        address = normalize_address(data[CONF_ADDRESS])
+        if address is None:
             raise ServiceValidationError("Not a valid MAC address")
 
     frame = DisplayFrame(
