@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import CONF_MODE, MODES
@@ -55,5 +56,10 @@ class ScreenSelect(LcdTickerEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         for slot_id, name in self.scheduler.slot_names().items():
             if name == option:
-                await self.scheduler.async_show_now(slot_id)
+                try:
+                    await self.scheduler.async_show_now(slot_id)
+                except ValueError as err:
+                    raise ServiceValidationError(
+                        f"Screen '{option}' is no longer available"
+                    ) from err
                 return

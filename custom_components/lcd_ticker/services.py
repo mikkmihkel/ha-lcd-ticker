@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
@@ -50,7 +51,11 @@ def _address_from_device(hass: HomeAssistant, device_id: str) -> str:
     if device is not None:
         for entry_id in device.config_entries:
             entry = hass.config_entries.async_get_entry(entry_id)
-            if entry is not None and entry.domain == DOMAIN:
+            if (
+                entry is not None
+                and entry.domain == DOMAIN
+                and entry.state is ConfigEntryState.LOADED
+            ):
                 return entry.data[CONF_ADDRESS]
     raise ServiceValidationError("Not an LCD Ticker thermometer")
 

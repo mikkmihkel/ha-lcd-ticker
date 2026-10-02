@@ -52,6 +52,8 @@ class UpdatesLastHourSensor(LcdTickerEntity, SensorEntity):
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_state_class = SensorStateClass.MEASUREMENT
+    # Ages out with time, not with scheduler events; the property does no I/O.
+    _attr_should_poll = True
 
     def __init__(self, entry: LcdTickerConfigEntry) -> None:
         super().__init__(entry, "updates_last_hour")
@@ -66,6 +68,7 @@ class EstimatedUpdatesSensor(LcdTickerEntity, SensorEntity):
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_should_poll = True
 
     def __init__(self, entry: LcdTickerConfigEntry) -> None:
         super().__init__(entry, "estimated_updates_per_hour")

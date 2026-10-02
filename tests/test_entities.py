@@ -1,4 +1,3 @@
-# ruff: noqa: F401, F811
 """Tests for the entities."""
 
 from __future__ import annotations
@@ -10,10 +9,13 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
+import pytest
 
 from custom_components.lcd_ticker.ble import DeviceUnreachable
 from custom_components.lcd_ticker.const import (
+    ACTIVITY_CHECK_INTERVAL,
     CONF_ENABLED,
     CONF_MODE,
     CONF_PROFILE,
@@ -24,14 +26,8 @@ from custom_components.lcd_ticker.const import (
     RELOAD_DELAY,
 )
 
-from .test_init import (
-    ADDR,
-    FakeWriter,
-    advance,
-    entity_id,
-    setup_entry,
-    writer,
-)
+from .conftest import FakeWriter
+from .test_init import advance, entity_id
 
 
 async def test_rotation_switch(hass: HomeAssistant, setup_entry) -> None:
@@ -138,3 +134,40 @@ async def test_last_error_disabled_by_default(
     reg = registry.async_get(entity_id(hass, "sensor", "last_error"))
     assert reg.disabled_by is er.RegistryEntryDisabler.INTEGRATION
     assert reg.platform == DOMAIN
+
+
+async def test_updates_sensor_ages_out_while_paused(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    setup_entry,
+    writer: FakeWriter,
+) -> None:
+    updates = entity_id(hass, "sensor", "updates_last_hour")
+    await advance(hass, freezer, RELOAD_DELAY)
+    assert hass.states.get(updates).state == "1"
+    await hass.services.async_call(
+        "switch",
+        "turn_off",
+        {"entity_id": entity_id(hass, "switch", "rotation")},
+        blocking=True,
+    )
+    # Let the pause settle (it writes the inactive frame once), then wait out
+    # the hour. No scheduler event happens after that, only the poll.
+    await advance(hass, freezer, ACTIVITY_CHECK_INTERVAL)
+    await advance(hass, freezer, 3600 + 60)
+    assert hass.states.get(updates).state == "0"
+
+
+async def test_screen_select_vanished_slot(hass: HomeAssistant, setup_entry) -> None:
+    eid = entity_id(hass, "select", "screen")
+    scheduler = setup_entry.runtime_data.scheduler
+    with (
+        patch.object(scheduler, "async_show_now", AsyncMock(side_effect=ValueError)),
+        pytest.raises(ServiceValidationError),
+    ):
+        await hass.services.async_call(
+            "select",
+            "select_option",
+            {"entity_id": eid, "option": "Power"},
+            blocking=True,
+        )

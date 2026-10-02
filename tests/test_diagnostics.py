@@ -1,4 +1,3 @@
-# ruff: noqa: F401, F811
 """Tests for diagnostics."""
 
 from __future__ import annotations
@@ -9,7 +8,7 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
 )
 from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
-from .test_init import ADDR, setup_entry, writer
+from .conftest import ADDR
 
 
 async def test_diagnostics(

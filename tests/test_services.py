@@ -1,4 +1,3 @@
-# ruff: noqa: F401, F811
 """Tests for the show action."""
 
 from __future__ import annotations
@@ -9,11 +8,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
 from custom_components.lcd_ticker.const import DOMAIN
 
-from .test_init import ADDR, FakeWriter, setup_entry, writer
+from .conftest import ADDR, FakeWriter
 
 
 async def call(hass: HomeAssistant, data: dict) -> None:
@@ -99,3 +99,25 @@ async def test_show_unknown_device(
 ) -> None:
     with pytest.raises(ServiceValidationError):
         await call(hass, {"device_id": "nope"})
+
+
+async def test_show_device_of_other_integration(
+    hass: HomeAssistant, setup_entry
+) -> None:
+    other = MockConfigEntry(domain="other")
+    other.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=other.entry_id, identifiers={("other", "x")}
+    )
+    with pytest.raises(ServiceValidationError):
+        await call(hass, {"device_id": device.id})
+
+
+async def test_show_device_of_unloaded_entry(hass: HomeAssistant, setup_entry) -> None:
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, ADDR), setup_entry.entry_id
+    )
+    await hass.config_entries.async_unload(setup_entry.entry_id)
+    await hass.async_block_till_done()
+    with pytest.raises(ServiceValidationError):
+        await call(hass, {"device_id": device.id})
