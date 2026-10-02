@@ -2,3 +2,6 @@
 pytest-homeassistant-custom-component==0.13.367
 ruff==0.16.10
 pytest-cov==7.1.0
+# Imported by HA's usb component (a bluetooth dependency); not pulled in on Linux otherwise.
+aiousbwatcher==1.1.2
+serialx==1.10.0

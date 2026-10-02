@@ -21,6 +21,8 @@ jobs:
       - uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3 # master 2026-09-27
 
   hacs:
+    # HACS can only validate (and install) public repositories.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
