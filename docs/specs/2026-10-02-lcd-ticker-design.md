@@ -32,9 +32,9 @@ solar use case through a single YAML-enabled action.
 
 Each feature below is built the simplest way that works, with safe defaults, input
 validated at the boundary, and no clever code. Anything not in this spec is out of scope
-for coding agents.
+for v1.
 
-## 2. Decisions (from brainstorming, 2026-10-02)
+## 2. Decisions (2026-10-02)
 
 | # | Decision |
 |---|---|
@@ -44,7 +44,6 @@ for coding agents.
 | D4 | Screen values come from an entity with multiplier/offset/decimals and automatic unit conversion, started from a preset. No Jinja templates in v1. Averages and sums come from HA helpers (Min/Max, Statistics, Template). |
 | D5 | Architecture approach 1: config entry per thermometer, config subentry per screen, a scheduler per thermometer, one global BLE queue. Runtime settings are also exposed as entities. |
 | D6 | Minimum HA version is 2026.3, which brings config subentries and the integration's own `brand/` icons. |
-| D7 | No AI attribution in commits, PRs or releases. |
 | D8 | Keep it simple and secure: the simplest implementation of each feature, hard to misuse or misconfigure. Section 13 lists the few removals the user confirmed. |
 
 ## 3. Hardware and protocol
