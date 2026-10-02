@@ -28,6 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LcdTickerConfigEntry) ->
     readings = ReadingsListener(hass, entry)
     entry.runtime_data = LcdTickerData(scheduler, readings, structural_snapshot(entry))
     await readings.async_start()
+    entry.async_on_unload(readings.async_stop)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await scheduler.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -49,5 +50,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: LcdTickerConfigEntry) -
     ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if ok:
         await entry.runtime_data.scheduler.async_stop()
-        await entry.runtime_data.readings.async_stop()
     return ok

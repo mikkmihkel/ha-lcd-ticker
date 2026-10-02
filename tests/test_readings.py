@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from freezegun.api import FrozenDateTimeFactory
-from homeassistant.core import HomeAssistant
+from homeassistant.components.bluetooth import BluetoothScanningMode
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -22,6 +23,14 @@ def make_listener(hass: HomeAssistant) -> ReadingsListener:
     return ReadingsListener(hass, entry)
 
 
+def count_signal(signals: list[None]):
+    @callback
+    def on_signal() -> None:
+        signals.append(None)
+
+    return on_signal
+
+
 async def test_nothing_before_first_advert(
     hass: HomeAssistant, bluetooth_mock: FakeBluetooth
 ) -> None:
@@ -33,6 +42,9 @@ async def test_nothing_before_first_advert(
     assert listener.available is False
     assert bluetooth_mock.matcher["address"] == ADDR
     assert bluetooth_mock.matcher["connectable"] is False
+    assert bluetooth_mock.mode is BluetoothScanningMode.PASSIVE
+    assert bluetooth_mock.unavailable_connectable is False
+    assert bluetooth_mock.last_info_connectable is False
 
 
 async def test_alternating_adverts_merge(
@@ -42,7 +54,7 @@ async def test_alternating_adverts_merge(
     listener = make_listener(hass)
     await listener.async_start()
     signals: list[None] = []
-    async_dispatcher_connect(hass, signal_readings("e1"), lambda: signals.append(None))
+    async_dispatcher_connect(hass, signal_readings("e1"), count_signal(signals))
     bluetooth_mock.advert(ADVERT_A, rssi=-71)
     bluetooth_mock.advert(ADVERT_B, rssi=-65)
     assert listener.values == {
@@ -75,7 +87,7 @@ async def test_unavailable_flips_available(
     await listener.async_start()
     bluetooth_mock.advert(ADVERT_A)
     signals: list[None] = []
-    async_dispatcher_connect(hass, signal_readings("e1"), lambda: signals.append(None))
+    async_dispatcher_connect(hass, signal_readings("e1"), count_signal(signals))
     bluetooth_mock.go_unavailable()
     await hass.async_block_till_done()
     assert listener.available is False

@@ -168,6 +168,16 @@ def test_apply_sources_climate():
     assert out["unit"] == "none"
 
 
+def test_climate_without_humidity_has_no_face():
+    data = new_screen_data("climate", 1)
+    out = apply_sources("climate", data, {"big_entity": "sensor.temp"})
+    assert out["face_mode"] == "none"
+    out = apply_sources(
+        "climate", data, {"big_entity": "sensor.temp", "small_entity": "sensor.h"}
+    )
+    assert out["face_mode"] == "scale"
+
+
 def test_apply_sources_price():
     data = new_screen_data("price", 1)
     out = apply_sources("price", data, {"big_entity": "sensor.price"})

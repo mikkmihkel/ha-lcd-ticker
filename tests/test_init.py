@@ -10,10 +10,12 @@ from homeassistant.config_entries import ConfigEntryState, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
     async_fire_time_changed,
 )
 
 from custom_components.lcd_ticker.const import (
+    CONF_ADDRESS,
     CONF_PRESENCE_ENTITY,
     CONF_SECONDS,
     DOMAIN,
@@ -119,3 +121,25 @@ async def test_new_subentry_reloads(hass: HomeAssistant, setup_entry) -> None:
         )
         await hass.async_block_till_done()
     reload.assert_called_once_with(setup_entry.entry_id)
+
+
+async def test_failed_setup_does_not_leak_the_listener(
+    hass: HomeAssistant, bluetooth_mock, writer: FakeWriter
+) -> None:
+    hass.config.components.update({"bluetooth", "bluetooth_adapters"})
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=ADDR, data={CONF_ADDRESS: ADDR}, options={}
+    )
+    entry.add_to_hass(hass)
+    with (
+        patch("custom_components.lcd_ticker.get_writer", return_value=writer),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    bluetooth_mock.unregister.assert_called_once()
+    bluetooth_mock.unregister_unavailable.assert_called_once()

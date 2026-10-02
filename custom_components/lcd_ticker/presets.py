@@ -257,6 +257,8 @@ def apply_sources(
         has_small = bool(result.get(CONF_SMALL_ENTITY))
         result[CONF_SMALL_SOURCE] = SMALL_ENTITY if has_small else SMALL_NONE
         result[CONF_PERCENT] = has_small
+        if not has_small and result.get(CONF_FACE_SOURCE) == FACE_SOURCE_SMALL:
+            result[CONF_FACE_MODE] = FACE_MODE_NONE  # no humidity, nothing to judge
         convert = result.get(CONF_BIG_CONVERT)
         if convert == CONVERT_FAHRENHEIT:
             result[CONF_UNIT] = "deg_f"

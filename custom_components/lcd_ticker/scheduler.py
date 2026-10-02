@@ -201,6 +201,7 @@ class Scheduler:
         self.last_success: datetime.datetime | None = None
         self.last_error: str | None = None
         self.last_frame: DisplayFrame | None = None
+        self.last_frame_slot: str | None = None  # None for inactive frames
         self.reachable: bool | None = None
 
     # ---- read-only state -------------------------------------------------
@@ -218,6 +219,12 @@ class Scheduler:
     @property
     def current_screen_name(self) -> str | None:
         slot = self.current_slot
+        return self.slot_names().get(slot) if slot else None
+
+    @property
+    def last_frame_screen_name(self) -> str | None:
+        """Name of the screen that produced `last_frame`."""
+        slot = self.last_frame_slot
         return self.slot_names().get(slot) if slot else None
 
     @property
@@ -248,14 +255,13 @@ class Scheduler:
 
     def diagnostics(self) -> dict[str, Any]:
         """Runtime state for diagnostics. Contains no address."""
+        names = self.slot_names()
         return {
             "active": self._active,
             "mode": self._options.get(CONF_MODE),
             "current_slot": self.current_slot,
             "slots": list(self.slot_names().values()),
-            "eligible_slots": [names[s] for s in self._rotation_slots() if s in names]
-            if (names := self.slot_names())
-            else [],
+            "eligible_slots": [names[s] for s in self._rotation_slots()],
             "last_payload": self._last_payload.hex() if self._last_payload else None,
             "last_success": self.last_success.isoformat()
             if self.last_success
@@ -541,10 +547,10 @@ class Scheduler:
 
     async def _tick_rotating(self, now: datetime.datetime, force: bool) -> None:
         count = len(self._slots)
-        jump, self._jump_slot = self._jump_slot, None
         if force and 0 <= self._index < count:
-            candidates = [self._index]
+            candidates = [self._index]  # a pending take-over jump stays pending
         else:
+            jump, self._jump_slot = self._jump_slot, None
             rotation = self._rotation_slots()
             order = [(self._index + step) % count for step in range(1, count + 1)]
             candidates = [i for i in order if self._slots[i] in rotation]
@@ -597,7 +603,7 @@ class Scheduler:
         payload = build_ext_frame(frame)
         if not must and payload == self._last_payload and not self._is_stale(frame):
             return True
-        if await self._async_send(payload, frame):
+        if await self._async_send(payload, frame, slot):
             self._last_payload = payload
             if slot is not None and slot != BUILTIN_SLOT:
                 self._last_big[slot] = frame.big
@@ -613,7 +619,9 @@ class Scheduler:
         age = (dt_util.utcnow() - self._last_success_at).total_seconds()
         return age > frame.validity * 2 / 3
 
-    async def _async_send(self, payload: bytes, frame: DisplayFrame) -> bool:
+    async def _async_send(
+        self, payload: bytes, frame: DisplayFrame, slot: str | None
+    ) -> bool:
         """Write once. Never raises, never retries."""
         now = dt_util.utcnow()
         self._last_write_at = now
@@ -624,14 +632,17 @@ class Scheduler:
         except Exception as err:
             self._record_failure(err, unexpected=True)
         else:
-            self._record_success(now, frame)
+            self._record_success(now, frame, slot)
             return True
         finally:
             self._notify()
         return False
 
-    def _record_success(self, now: datetime.datetime, frame: DisplayFrame) -> None:
+    def _record_success(
+        self, now: datetime.datetime, frame: DisplayFrame, slot: str | None
+    ) -> None:
         self.last_frame = frame
+        self.last_frame_slot = slot
         self.last_success = now
         self._last_success_at = now
         self.reachable = True
@@ -754,10 +765,12 @@ class Scheduler:
     def _jump_candidates(self, entity_id: str) -> list[str]:
         if not self._active or self._options.get(CONF_MODE) != MODE_ROTATING:
             return []
+        rotation = self._rotation_slots()
         return [
             sid
             for sid, _, data in self._enabled_screens()
-            if data.get(CONF_JUMP_DELTA, 0) > 0
+            if sid in rotation
+            and data.get(CONF_JUMP_DELTA, 0) > 0
             and sid in self._last_big
             and entity_id in screen_entity_ids(data)
         ]

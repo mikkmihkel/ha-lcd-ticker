@@ -1407,3 +1407,109 @@ async def test_users_scenario(hass, freezer, writer, run) -> None:
     assert names()["eligible_slots"] == ["S1", "S2"]
     await advance(hass, freezer, DWELL)
     assert bigs(writer)[-1] == 9.0
+
+
+# ---- fixes from review ------------------------------------------------------
+
+
+async def test_jump_cannot_interrupt_a_takeover(hass, freezer, writer, run) -> None:
+    set_value(hass, "sensor.h", "21")
+    set_value(hass, "sensor.s", "90")
+    set_cond(hass, SAUNA, "off")
+    await run(
+        screens=(
+            screen("sensor.h", 1, **{CONF_JUMP_DELTA: 1}),
+            screen("sensor.s", 2, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+        )
+    )
+    set_cond(hass, SAUNA, "on")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert bigs(writer) == [21.0, 90.0]
+    await advance(hass, freezer, MIN_WRITE_GAP + 1)
+    set_value(hass, "sensor.h", "25")
+    await settle(hass)
+    assert bigs(writer) == [21.0, 90.0]  # Home is not in the rotation now
+
+
+async def test_screen_with_condition_off_never_jumps(
+    hass, freezer, writer, run
+) -> None:
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_cond(hass, SAUNA, "on")
+    await run(
+        screens=(
+            screen("sensor.a", 1),
+            screen("sensor.b", 2, **cond(SAUNA, **{CONF_JUMP_DELTA: 1})),
+        )
+    )
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer) == [1.0, 2.0]
+    set_cond(hass, SAUNA, "off")
+    await settle(hass)
+    await advance(hass, freezer, MIN_WRITE_GAP + 1)
+    assert bigs(writer) == [1.0, 2.0, 1.0]  # moved on to A
+    await advance(hass, freezer, MIN_WRITE_GAP + 1)
+    set_value(hass, "sensor.b", "9")
+    await settle(hass)
+    assert bigs(writer) == [1.0, 2.0, 1.0]
+
+
+async def test_refresh_keeps_a_pending_takeover_jump(hass, freezer, writer, run):
+    for entity, value in (("sensor.a", "1"), ("sensor.b", "2"), ("sensor.c", "3")):
+        set_value(hass, entity, value)
+    set_cond(hass, DAY, "on")
+    set_cond(hass, SAUNA, "on")
+    set_cond(hass, "binary_sensor.third", "off")
+    scheduler = await run(
+        screens=(
+            screen("sensor.a", 1, **cond(DAY, **{CONF_TAKEOVER: True})),
+            screen("sensor.b", 2, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+            screen(
+                "sensor.c",
+                3,
+                **cond("binary_sensor.third", **{CONF_TAKEOVER: True}),
+            ),
+        )
+    )
+    assert bigs(writer) == [1.0]
+    await advance(hass, freezer, 20)
+    set_cond(hass, "binary_sensor.third", "on")
+    await settle(hass)
+    await scheduler.async_refresh()  # during the gap
+    assert bigs(writer) == [1.0, 1.0]
+    await advance(hass, freezer, DWELL)
+    assert bigs(writer)[-1] == 3.0  # the jump was kept, not B
+
+
+async def test_condition_flip_while_inactive_schedules_nothing(
+    hass, freezer, writer, run
+) -> None:
+    await hass.config.async_set_time_zone("UTC")
+    freezer.move_to("2026-10-02 21:59:00+00:00")
+    set_value(hass, "sensor.a", "1")
+    set_value(hass, "sensor.b", "2")
+    set_cond(hass, SAUNA, "off")
+    options = {CONF_QUIET_START: "22:00", CONF_QUIET_END: "06:00"}
+    scheduler = await run(
+        options,
+        screens=(
+            screen("sensor.a", 1),
+            screen("sensor.b", 2, **cond(SAUNA, **{CONF_TAKEOVER: True})),
+        ),
+    )
+    await advance(hass, freezer, ACTIVITY_CHECK_INTERVAL)
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert scheduler.active is False
+    count = len(writer.writes)
+    set_cond(hass, SAUNA, "on")
+    await settle(hass)
+    assert scheduler._tick_due is None
+    await advance(hass, freezer, 3 * DWELL)
+    assert len(writer.writes) == count
+
+
+async def test_diagnostics_eligible_slots_when_no_screens(hass, writer, run):
+    scheduler = await run(first_tick=False)
+    assert scheduler.diagnostics()["eligible_slots"] == []

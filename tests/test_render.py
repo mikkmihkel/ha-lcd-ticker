@@ -346,9 +346,25 @@ def test_face_middle_sorts_thresholds_first():
 
 @pytest.mark.parametrize(
     ("value", "text"),
-    [(12.44, "12.4"), (-9.5, "-9.5"), (199.5, "199.5"), (199.6, "200"), (-9.6, "-10")],
+    [
+        (12.44, "12.4"),
+        (-9.5, "-9.5"),
+        (199.5, "199.5"),
+        (199.6, "200"),
+        (-9.6, "-10"),
+        (21.25, "21.3"),
+        (12.45, "12.5"),
+        (0.25, "0.3"),
+        (199.54, "199.5"),
+        (-9.54, "-9.5"),
+        (250.45, "251"),
+        (-0.04, "0.0"),
+        (1e6, "1999"),
+        (-1e6, "-100"),
+    ],
 )
 def test_format_big(value, text):
+    """Matches the LCD: tenths up to 199.5, whole numbers above, half away from 0."""
     assert format_big(value) == text
 
 
@@ -382,6 +398,19 @@ def test_describe_screen_shows_value_symbols_and_source():
     assert "face \u0394\u25b3\u0394" in text
     assert "\u00b0C" in text
     assert "from 0.1234 EUR/kWh" in text
+
+
+def test_describe_screen_shows_percent_and_battery():
+    screen = {
+        "big_entity": "sensor.t",
+        "small_source": "fixed",
+        "small_fixed": 55,
+        "percent": True,
+        "battery": True,
+    }
+    text = describe_screen(screen, {"sensor.t": SourceValue("5", None)})
+    assert "small 55%" in text
+    assert "battery icon" in text
 
 
 def test_describe_screen_omits_none_parts():

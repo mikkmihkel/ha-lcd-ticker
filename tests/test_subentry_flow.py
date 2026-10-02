@@ -400,3 +400,40 @@ async def test_look_step_preview_survives_a_render_error(hass: HomeAssistant) ->
         )
     assert result["step_id"] == "look"
     assert "could not be calculated" in result["description_placeholders"]["preview"]
+
+
+async def test_preview_after_a_look_error_uses_the_entered_values(
+    hass: HomeAssistant,
+) -> None:
+    hass.states.async_set("sensor.price", "5", {})
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_BIG_ENTITY: "sensor.price"}
+    )
+    assert "°C" not in result["description_placeholders"]["preview"]
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_UNIT: "deg_c", CONF_TAKEOVER: True}
+    )
+    assert result["errors"] == {"base": "takeover_needs_entity"}
+    assert "°C" in result["description_placeholders"]["preview"]
+
+
+async def test_reconfigure_prefills_show_when_entity(hass: HomeAssistant) -> None:
+    data = {
+        **new_screen_data("price", 1),
+        CONF_BIG_ENTITY: "sensor.price",
+        CONF_SHOW_WHEN: "binary_sensor.sauna",
+    }
+    entry = await make_entry(hass, [("Old", data)])
+    (sub,) = stored(entry)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_SCREEN),
+        context={"source": SOURCE_RECONFIGURE, "subentry_id": sub.subentry_id},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_BIG_ENTITY: "sensor.price"}
+    )
+    assert result["step_id"] == "look"
+    marker = next(k for k in result["data_schema"].schema if k == CONF_SHOW_WHEN)
+    assert marker.description == {"suggested_value": "binary_sensor.sauna"}

@@ -38,7 +38,7 @@ _SIZES: dict[int, int] = {
             0x0C,
             0x0D,
             0x0E,
-            0x12,
+            0x12,  # 0x12-0x14 (CO2, TVOC, moisture) are 2 bytes, not 1
             0x13,
             0x14,
             0x3D,

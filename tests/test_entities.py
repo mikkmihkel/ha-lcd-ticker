@@ -217,6 +217,21 @@ async def test_reading_sensors_follow_adverts(
     assert hass.states.get(entity_id(hass, "sensor", "battery")).state == "92"
 
 
+async def test_reading_sensors_write_only_on_change(
+    hass: HomeAssistant, setup_entry, bluetooth_mock: FakeBluetooth
+) -> None:
+    from custom_components.lcd_ticker.sensor import ReadingSensor
+
+    with patch.object(ReadingSensor, "async_write_ha_state", autospec=True) as write:
+        bluetooth_mock.advert(ADVERT_A)
+        await hass.async_block_till_done()
+        assert write.call_count == 3  # temperature, humidity, battery now available
+        bluetooth_mock.advert(ADVERT_A)  # same values again
+        setup_entry.runtime_data.scheduler._notify()  # a scheduler update
+        await hass.async_block_till_done()
+        assert write.call_count == 3
+
+
 async def test_reading_sensors_unavailable_when_thermometer_silent(
     hass: HomeAssistant, setup_entry, bluetooth_mock: FakeBluetooth
 ) -> None:
@@ -275,7 +290,7 @@ async def test_display_sensor(
     state = hass.states.get(eid)
     assert state.state == "12.4 | 0"
     assert state.attributes["screen"] == "Power"
-    assert state.attributes["big"] == pytest.approx(12.44)
+    assert state.attributes["big"] == pytest.approx(12.4)  # what the LCD got
     assert state.attributes["small"] == 0
     assert state.attributes["unit"] == "none"
     assert state.attributes["face"] == "none"
@@ -301,6 +316,9 @@ async def test_display_sensor_builtin(
 
     eid = entity_id(hass, "sensor", "display")
     scheduler = setup_entry.runtime_data.scheduler
+    await advance(hass, freezer, RELOAD_DELAY)  # a screen is current
+    assert hass.states.get(eid).attributes["screen"] == "Power"
     await scheduler._async_write_frame(None, DisplayFrame(validity=1), True)
     await hass.async_block_till_done()
     assert hass.states.get(eid).state == "built-in reading"
+    assert hass.states.get(eid).attributes["screen"] is None  # not a screen's frame

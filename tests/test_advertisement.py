@@ -33,6 +33,12 @@ def test_bthome_advert_b_with_binary_objects() -> None:
     assert r is not None and r.voltage == 2.858
 
 
+def test_bthome_ids_12_to_14_are_two_bytes() -> None:
+    # 0x12 (CO2) takes 2 bytes; if it took 1 the battery after it would be lost
+    r = parse_service_data(bthome("4012e803015c"))
+    assert r == Readings(battery=92)
+
+
 def test_bthome_u8_humidity_and_temp_tenths() -> None:
     r = parse_service_data(bthome("402e3245fa00"))
     assert r == Readings(temperature=25.0, humidity=50.0)

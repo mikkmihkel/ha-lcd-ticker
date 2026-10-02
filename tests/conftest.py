@@ -58,6 +58,8 @@ class FakeBluetooth:
         self.callback: Callable[..., None] | None = None
         self.unavailable_callback: Callable[..., None] | None = None
         self.last_info: SimpleNamespace | None = None
+        self.unavailable_connectable: bool | None = None
+        self.last_info_connectable: bool | None = None
         self.unregister = MagicMock()
         self.unregister_unavailable = MagicMock()
 
@@ -69,7 +71,12 @@ class FakeBluetooth:
 
     def track_unavailable(self, hass, callback, address, connectable=True):
         self.unavailable_callback = callback
+        self.unavailable_connectable = connectable
         return self.unregister_unavailable
+
+    def last_service_info(self, hass, address, connectable=True):
+        self.last_info_connectable = connectable
+        return self.last_info
 
     def advert(self, data: bytes, rssi: int = -60) -> None:
         assert self.callback is not None
@@ -88,10 +95,7 @@ def bluetooth_mock():
     with (
         patch(f"{base}.async_register_callback", side_effect=fake.register),
         patch(f"{base}.async_track_unavailable", side_effect=fake.track_unavailable),
-        patch(
-            f"{base}.async_last_service_info",
-            side_effect=lambda hass, address, connectable=True: fake.last_info,
-        ),
+        patch(f"{base}.async_last_service_info", side_effect=fake.last_service_info),
     ):
         yield fake
 

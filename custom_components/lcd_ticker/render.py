@@ -54,13 +54,12 @@ from .const import (
     SMALL_SELF_CONSUMPTION,
 )
 from .protocol import (
-    BIG_MAX,
-    BIG_MIN,
     FACE_KEYS,
     UNIT_KEYS,
     DisplayFrame,
     Face,
     Unit,
+    encode_big,
     round_half_away,
 )
 
@@ -161,11 +160,17 @@ def face_for(value: float, direction: str, thresholds: Sequence[float]) -> Face:
 
 
 def format_big(value: float) -> str:
-    """The big number as the LCD shows it: one decimal up to 199.5, else whole."""
-    value = max(BIG_MIN, min(BIG_MAX, value))
-    if -9.5 <= value <= 199.5:
-        return f"{value:.1f}"
-    return str(round_half_away(value))
+    """The big number as the LCD shows it.
+
+    The firmware shows tenths (-9.5 .. 199.5) with one decimal and anything
+    bigger as a whole number, rounded half away from zero, at most 1999.
+    """
+    tenths = encode_big(value)
+    if -95 <= tenths <= 1995:
+        return f"{tenths / 10:.1f}"
+    if tenths > 0:
+        return str(min((tenths + 5) // 10, 1999))
+    return str(-((-tenths + 5) // 10))
 
 
 # Same symbols as the face and unit choices in strings.json.
@@ -199,7 +204,12 @@ def describe_screen(
     if frame is None:
         parts = ["nothing (an entity is unavailable or its unit can't be converted)"]
     else:
-        parts = [f"big {format_big(frame.big)}", f"small {frame.small}"]
+        parts = [
+            f"big {format_big(frame.big)}",
+            f"small {frame.small}{'%' if frame.percent else ''}",
+        ]
+        if frame.battery:
+            parts.append("battery icon")
         if (face := _FACE_SYMBOLS.get(frame.face.name.lower())) is not None:
             parts.append(f"face {face}")
         if (unit := _UNIT_SYMBOLS.get(frame.unit.name.lower())) is not None:

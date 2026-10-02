@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-02
+
+### Added
+
+- The thermometer's own temperature, humidity, battery, voltage and signal strength as sensors, read passively from its broadcasts.
+- Per-screen conditions ("only show while this is on") and take-over.
+- A live preview of the LCD in each screen's setup.
+- A Display sensor that shows what is on the LCD now.
+- Conversion controls (multiplier, offset, decimals) in every preset.
+- Comfort-range faces, where the middle of the range is the best.
+
 ## [0.1.2] - 2026-10-02
 
 ### Fixed

@@ -38,6 +38,14 @@ Notes on the presets:
 
 The LCD shows only digits and a few symbols, so give each screen a marker you'll recognise: a unit symbol (°C, °F, `-`, `_`, `=`), the `%` sign, the battery icon, or a face. You get a warning if two screens look identical.
 
+## Examples
+
+1. **Sauna, only while it heats.** Create a *Threshold* helper called "Sauna heating" (sauna temperature above 40 °C). Add a **Single value** screen "Sauna" with the symbol °C and a fixed face. Set *Only show while this is on* to the threshold sensor and turn on **take-over**, so the sauna temperature replaces the other screens until it cools down.
+2. **Home average.** Create a *Min/Max* helper (mean) from your temperature sensors, or use your existing `sensor.home_average_temp` and `sensor.home_average_hum`. Add a **Room climate** screen with them. The face uses the comfort range (30 / 40 / 60 / 70 %).
+3. **Electricity price in the daytime.** Create a *Schedule* helper "Daytime". Add an **Electricity price** screen, set *Only show while this is on* to the schedule, and enter your VAT %.
+
+Each screen's setup shows a live preview of the LCD, and the **Display** sensor shows what is on the LCD right now.
+
 ## How screens and battery work
 
 Each thermometer has one of two modes:
@@ -69,7 +77,9 @@ Each thermometer gets its own device with these entities:
 - **Screen** (select, pick one to show it now)
 - **Seconds per screen** and **Seconds per screen while present** (number)
 - **Refresh now** (button)
+- **Display** (sensor, what the LCD shows now)
 - **Last update**, **Updates in the last hour** and **Estimated updates per hour** (sensors)
+- The thermometer's own **Temperature**, **Humidity**, **Battery**, **Voltage** and **Signal strength** (off by default). They are read passively from its Bluetooth broadcasts, so they cost no battery.
 - **Reachable** (binary sensor)
 - **Last error** (sensor, off by default)
 
@@ -105,7 +115,7 @@ Afterwards the thermometer is named `ATC_` plus six characters of its MAC. Some 
 - **"Could not reach the thermometer"**: move it closer to the Bluetooth adapter or proxy, and check that the adapter supports connections, not just scanning.
 - **It alternates with temperature/humidity**: that's normal in *Single screen + built-in* mode and with *If HA stops → Alternate*. The pvvx settings `show_batt_enabled` and `show_time_smile` can add battery or clock steps.
 - **Shows 1999 or -99**: the value is beyond what the LCD can show. Check the screen's conversion and multiplier.
-- **Where is the battery level?** On the thermometer's own BTHome device in Home Assistant (same MAC).
+- **Battery level**: the **Battery** sensor on the LCD Ticker device (from the thermometer's own broadcasts; encrypted BTHome isn't supported).
 - **Deleting your last screen**: turn **Rotation** off first, or the LCD keeps the last value.
 - **Reporting a bug**: attach the integration's **diagnostics** download. The MAC address is removed from it.
 

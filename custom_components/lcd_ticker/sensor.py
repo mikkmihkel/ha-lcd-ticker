@@ -18,13 +18,14 @@ from homeassistant.const import (
     UnitOfElectricPotential,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import VALIDITY_BUILTIN, signal_readings
 from .entity import LcdTickerEntity
 from .models import LcdTickerConfigEntry
+from .protocol import encode_big
 from .render import format_big
 
 PARALLEL_UPDATES = 0
@@ -110,8 +111,8 @@ class DisplaySensor(LcdTickerEntity, SensorEntity):
         if frame is None:
             return None
         return {
-            "screen": self.scheduler.current_screen_name,
-            "big": frame.big,
+            "screen": self.scheduler.last_frame_screen_name,
+            "big": encode_big(frame.big) / 10,
             "small": frame.small,
             "unit": frame.unit.name.lower(),
             "face": frame.face.name.lower(),
@@ -189,17 +190,25 @@ class ReadingSensor(LcdTickerEntity, SensorEntity):
         self.entity_description = description
         self._attr_translation_key = None  # name comes from the device class
         self.listener = entry.runtime_data.readings
+        self._shown: tuple[float | int | None, bool] | None = None
 
     async def async_added_to_hass(self) -> None:
-        """Refresh the state when an advert arrives."""
-        await super().async_added_to_hass()
+        """Refresh the state when an advert changes it (not on scheduler updates)."""
+        self._shown = (self.native_value, self.available)
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
                 signal_readings(self.entry.entry_id),
-                self.async_write_ha_state,
+                self._handle_readings,
             )
         )
+
+    @callback
+    def _handle_readings(self) -> None:
+        shown = (self.native_value, self.available)
+        if shown != self._shown:
+            self._shown = shown
+            self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | int | None:
