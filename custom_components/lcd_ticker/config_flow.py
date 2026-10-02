@@ -87,6 +87,10 @@ from .const import (
     CONF_TITLE,
     CONF_UNIT,
     CONF_VAT_PERCENT,
+    CONVERT_CELSIUS,
+    CONVERT_CENTS_KWH,
+    CONVERT_FAHRENHEIT,
+    CONVERT_KW,
     CONVERT_OPTIONS,
     DECIMALS_OPTIONS,
     DEFAULT_NAME_PREFIX,
@@ -99,7 +103,6 @@ from .const import (
     MAX_SECONDS,
     MIN_SECONDS,
     MODES,
-    PRESET_CLIMATE,
     PRESET_SOLAR,
     PRESETS_ORDER,
     PROFILE_BALANCED,
@@ -192,11 +195,12 @@ def _select(options: list[str], key: str) -> SelectSelector:
     )
 
 
-def _entity(domain: list[str], device_class: str | None = None) -> EntitySelector:
-    flt = EntityFilterSelectorConfig(domain=domain)
-    if device_class:
-        flt["device_class"] = device_class
-    return EntitySelector(EntitySelectorConfig(filter=flt))
+def _entity(domain: list[str]) -> EntitySelector:
+    # No device-class filter: helpers and template sensors often have none.
+    # Units are checked after picking, with a clear message.
+    return EntitySelector(
+        EntitySelectorConfig(filter=EntityFilterSelectorConfig(domain=domain))
+    )
 
 
 def _any_number(
@@ -222,19 +226,25 @@ def _seconds(minimum: int) -> NumberSelector:
     )
 
 
-_BIG_DEVICE_CLASS = {PRESET_SOLAR: "power", PRESET_CLIMATE: "temperature"}
+# Shown in unit errors: what the field is converted to.
+_TARGET_LABELS = {
+    CONVERT_KW: "kW",
+    CONVERT_CELSIUS: "°C",
+    CONVERT_FAHRENHEIT: "°F",
+    CONVERT_CENTS_KWH: "cents per kWh",
+}
+_CONVERT_FIELD = {
+    CONF_BIG_ENTITY: CONF_BIG_CONVERT,
+    CONF_SMALL_ENTITY: CONF_SMALL_CONVERT,
+}
 
 
 def _screen_selector(key: str, preset: str) -> Any:
     """Return the selector for one screen field (sources and look steps)."""
-    if key == CONF_BIG_ENTITY:
-        return _entity(NUMERIC_DOMAINS, _BIG_DEVICE_CLASS.get(preset))
-    if key == CONF_SMALL_ENTITY:
-        return _entity(
-            NUMERIC_DOMAINS, "humidity" if preset == PRESET_CLIMATE else None
-        )
+    if key in (CONF_BIG_ENTITY, CONF_SMALL_ENTITY):
+        return _entity(NUMERIC_DOMAINS)
     if key in (CONF_PRODUCTION_ENTITY, CONF_EXPORT_ENTITY):
-        return _entity(["sensor"], "power")
+        return _entity(["sensor"])
     if key in (CONF_BIG_CONVERT, CONF_SMALL_CONVERT):
         return _select(CONVERT_OPTIONS, "convert")
     if key == CONF_BIG_DECIMALS:
@@ -632,6 +642,7 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         preset = self._data[CONF_PRESET]
         errors: dict[str, str] = {}
+        placeholders = {"unit": "", "target": ""}
         suggested = {k: v for k, v in self._data.items() if v is not None}
         if user_input is not None:
             suggested = dict(user_input)
@@ -641,6 +652,7 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             if not errors:
                 self._data = data
                 return await self.async_step_look()
+            placeholders = self._unit_placeholders(data, errors)
 
         fields: dict[Any, Any] = {}
         for key in SOURCE_FIELDS[preset]:
@@ -648,8 +660,28 @@ class ScreenSubentryFlow(ConfigSubentryFlow):
             fields[marker(key)] = _screen_selector(key, preset)
         schema = self.add_suggested_values_to_schema(vol.Schema(fields), suggested)
         return self.async_show_form(
-            step_id="sources", data_schema=schema, errors=errors
+            step_id="sources",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders=placeholders,
         )
+
+    def _unit_placeholders(
+        self, data: dict[str, Any], errors: dict[str, str]
+    ) -> dict[str, str]:
+        """Name the unit found and the conversion target for a unit error."""
+        for field, code in errors.items():
+            if code not in ("unit_not_supported", "unit_unknown"):
+                continue
+            entity_id = data.get(field) or data.get(CONF_BIG_ENTITY)
+            convert_key = _CONVERT_FIELD.get(field)
+            target = data.get(convert_key) if convert_key else CONVERT_KW
+            unit = self._unit_of(entity_id) if entity_id else None
+            return {
+                "unit": unit or "no unit",
+                "target": _TARGET_LABELS.get(target, str(target)),
+            }
+        return {"unit": "", "target": ""}
 
     def _default_title(self) -> str:
         if self._title is not None:

@@ -65,7 +65,21 @@ from .protocol import (
 
 DEFAULT_THRESHOLDS = (20, 40, 60, 80)
 _CENT_NAMES = frozenset(
-    {"c", "ct", "cent", "cents", "snt", "öre", "øre", "ore", "p", "gr"}
+    {
+        "c",
+        "ct",
+        "cent",
+        "cents",
+        "snt",
+        "sent",
+        "senti",
+        "¢",
+        "öre",
+        "øre",
+        "ore",
+        "p",
+        "gr",
+    }
 )
 _ENERGY_FACTORS = {"Wh": 1000.0, "kWh": 1.0, "MWh": 0.001}
 

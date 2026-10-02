@@ -437,3 +437,75 @@ async def test_reconfigure_prefills_show_when_entity(hass: HomeAssistant) -> Non
     assert result["step_id"] == "look"
     marker = next(k for k in result["data_schema"].schema if k == CONF_SHOW_WHEN)
     assert marker.description == {"suggested_value": "binary_sensor.sauna"}
+
+
+async def test_price_small_number_can_be_any_sensor(hass: HomeAssistant) -> None:
+    """Field report: the price preset forced the small number into c/kWh."""
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    fields = {str(k) for k in result["data_schema"].schema}
+    assert {"small_convert", "small_multiplier", "small_offset"} <= fields
+    result = await configure(
+        hass,
+        result,
+        {
+            CONF_BIG_ENTITY: "sensor.price",
+            "small_entity": "sensor.hum",
+            "small_convert": "none",
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (sub,) = stored(entry)
+    assert sub.data["small_entity"] == "sensor.hum"
+    assert sub.data["small_convert"] == "none"
+
+
+async def test_unit_error_names_the_unit_and_the_target(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "price")
+    result = await configure(
+        hass, result, {CONF_BIG_ENTITY: "sensor.price", "small_entity": "sensor.hum"}
+    )
+    assert result["errors"] == {"small_entity": "unit_not_supported"}
+    assert result["description_placeholders"]["unit"] == "%"
+    assert result["description_placeholders"]["target"] == "cents per kWh"
+
+
+@pytest.mark.parametrize("preset", ["solar", "climate", "price"])
+async def test_presets_show_small_number_conversion(
+    hass: HomeAssistant, preset
+) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, preset)
+    fields = {str(k) for k in result["data_schema"].schema}
+    assert {"small_convert", "small_multiplier", "small_offset"} <= fields
+
+
+@pytest.mark.parametrize("preset", ["solar", "climate", "price", "single", "custom"])
+async def test_entity_pickers_do_not_hide_sensors_without_device_class(
+    hass: HomeAssistant, preset
+) -> None:
+    """Helpers and template sensors often have no device class."""
+    entry = await make_entry(hass)
+    result = await start(hass, entry, preset)
+    for key, selector in result["data_schema"].schema.items():
+        if str(key).endswith("_entity"):
+            flt = selector.config.get("filter") or [{}]
+            assert all("device_class" not in f for f in flt), (preset, key)
+
+
+async def test_solar_keeps_a_chosen_small_conversion(hass: HomeAssistant) -> None:
+    entry = await make_entry(hass)
+    result = await start(hass, entry, "solar")
+    result = await configure(
+        hass,
+        result,
+        {
+            CONF_BIG_ENTITY: "sensor.pv",
+            "small_entity": "sensor.pv",
+            "small_convert": "kw",
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (sub,) = stored(entry)
+    assert sub.data["small_convert"] == "kw"

@@ -148,6 +148,8 @@ _BIG_CONVERSION = (
     CONF_BIG_DECIMALS,
 )
 
+_SMALL_CONVERSION = (CONF_SMALL_CONVERT, CONF_SMALL_MULTIPLIER, CONF_SMALL_OFFSET)
+
 # preset -> fields shown in the "sources" step
 SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
     PRESET_SOLAR: (
@@ -155,13 +157,20 @@ SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
         *_BIG_CONVERSION,
         CONF_EXPORT_ENTITY,
         CONF_SMALL_ENTITY,
+        *_SMALL_CONVERSION,
     ),
-    PRESET_CLIMATE: (CONF_BIG_ENTITY, *_BIG_CONVERSION, CONF_SMALL_ENTITY),
+    PRESET_CLIMATE: (
+        CONF_BIG_ENTITY,
+        *_BIG_CONVERSION,
+        CONF_SMALL_ENTITY,
+        *_SMALL_CONVERSION,
+    ),
     PRESET_PRICE: (
         CONF_BIG_ENTITY,
         *_BIG_CONVERSION,
         CONF_VAT_PERCENT,
         CONF_SMALL_ENTITY,
+        *_SMALL_CONVERSION,
     ),
     PRESET_SINGLE: (
         CONF_BIG_ENTITY,
@@ -250,7 +259,9 @@ def apply_sources(
         result[CONF_PRODUCTION_ENTITY] = result.get(CONF_BIG_ENTITY)
         if result.get(CONF_SMALL_ENTITY):
             result[CONF_SMALL_SOURCE] = SMALL_ENTITY
-            result[CONF_SMALL_CONVERT] = CONVERT_NONE
+            result.setdefault(CONF_SMALL_CONVERT, CONVERT_NONE)
+            if CONF_SMALL_CONVERT not in user_input:
+                result[CONF_SMALL_CONVERT] = CONVERT_NONE
         elif result.get(CONF_EXPORT_ENTITY):
             result[CONF_SMALL_SOURCE] = SMALL_SELF_CONSUMPTION
     elif preset == PRESET_CLIMATE:

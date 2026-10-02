@@ -427,3 +427,8 @@ def test_describe_screen_nothing_when_unusable():
     )
     assert text.startswith("nothing (an entity is unavailable")
     assert describe_screen(PRICE_SCREEN, {}).startswith("nothing")
+
+
+@pytest.mark.parametrize("unit", ["senti/kWh", "sent/kWh", "¢/kWh", "cents/kWh"])
+def test_price_factor_more_cent_spellings(unit):
+    assert price_factor(unit) == 1

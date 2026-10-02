@@ -139,7 +139,8 @@
             "vat_percent": "Added to prices converted to c/kWh. The core Nord Pool integration reports prices without VAT.",
             "small_fixed": "A screen number helps you tell screens apart.",
             "export_entity": "Self-consumption % = (production − export) / production.",
-            "small_entity": "Optional. For solar, pick an existing self-consumption % sensor instead of grid export."
+            "small_entity": "Optional. For solar, pick an existing self-consumption % sensor instead of grid export.",
+            "small_convert": "How the small number is converted. Choose \"No conversion\" for humidity, percentages and other plain numbers."
           }
         },
         "look": {
@@ -175,8 +176,8 @@
         }
       },
       "error": {
-        "unit_not_supported": "This sensor's unit cannot be converted to the selected unit.",
-        "unit_unknown": "This sensor has no unit yet, so it cannot be converted. Choose no conversion or wait until the sensor reports a value.",
+        "unit_not_supported": "This sensor reports \"{unit}\", which can't be converted to {target}. Change the conversion for this number (or choose \"No conversion\"), or pick another sensor.",
+        "unit_unknown": "This sensor has no unit yet, so it can't be converted to {target}. Choose \"No conversion\" for this number, or wait until the sensor reports a value.",
         "solar_small_required": "Pick either grid export or a self-consumption % sensor.",
         "small_entity_required": "Pick the entity for the small number.",
         "production_required": "Pick the solar production sensor.",

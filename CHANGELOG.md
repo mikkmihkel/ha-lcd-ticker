@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-03
+
+### Fixed
+
+- Presets no longer lock the small number's conversion: Solar, Room climate and Electricity price now show *Convert to*, multiplier and offset for the small number too. Before, the price preset always converted the small number to cents, so a humidity or percentage sensor failed with "unit cannot be converted".
+- Entity pickers no longer hide sensors without a device class (common for helpers and template sensors).
+- The unit error now says which unit the sensor reports and what it should convert to.
+- More cent spellings are recognised in price units (`senti`, `sent`, `¢`).
+
 ## [0.2.0] - 2026-10-02
 
 ### Added
