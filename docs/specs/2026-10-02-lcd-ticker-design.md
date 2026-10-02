@@ -129,7 +129,7 @@ has a fallback in case the check fails.
 | H3 | Finite-validity alternation on the user's device config (about 4.9 s each; whether battery/clock stages appear) | single + built-in mode, "alternate if HA stops" | document it; the README explains `show_batt_enabled`/`show_time_smile` |
 | H4 | Big number: one decimal up to 199.5, integer above, clamps at 1999.5 and −99.5 (source says yes) | rendering decimals | adjust clamps |
 | H5 | What each of the 8 unit codes and 8 smiley values looks like (photo table) | marker and face picker labels, README | hide values that look broken |
-| H6 | `0x23` + uint32 LE time is accepted, and finite validity then expires on time | finite validity | send no time sync and document drift |
+| H6 | Finite validity expires on time without any time sync | finite validity | send `0x23` before finite-validity frames |
 | H7 | BTHome battery appears on the same HA device page | battery display | link to the BTHome device in docs |
 | H8 | Write-without-response followed by an immediate disconnect is reliable over 50 writes | BLE layer | add a 0.5 s delay before disconnecting |
 | H9 | Two-week soak at Balanced, battery % logged daily | profile defaults, README battery guide | adjust profiles |
@@ -329,15 +329,15 @@ without blocking, when a new screen's markers are identical to an existing scree
   alternates our frame with its own reading.
 - It writes when the rendered frame changes, at most once per `seconds_per_screen`, and
   also refreshes when 2/3 of the validity has elapsed.
-- Every write in this mode sends the time frame (`0x23`) first, in the same connection
-  (H6). That's simpler than tracking when the clock was last set, and it costs nothing
-  extra because the connection is already open.
+- No time sync is needed. Expiry is computed against the device's own clock
+  (`chow_ext_ut = utc_time_sec + vtime`, compared with the same counter), so it is
+  relative. Correction from the earlier draft, 2026-10-02.
 
 ### 6.3 Validity in rotating mode
 
 - `on_ha_stop = freeze`: validity 65535.
-- `on_ha_stop = alternate`: validity = 3 × the current interval, with the time frame on
-  every write as in 6.2.
+- `on_ha_stop = alternate`: validity = `max(3 × the longest time on screen, 1800)`,
+  capped at 65534. No time sync is needed (see 6.2).
   The firmware then alternates every screen with its own reading. The options flow
   explains this.
 
@@ -566,7 +566,7 @@ What remains is hardware behavior, covered by H1–H9.
 | `lcd_ticker.show_screen` action | `select.select_option` on the Screen entity |
 | `pause_rotation` field on `lcd_ticker.show` | The Rotation switch |
 | "Latest wins" write-queue replacement | A plain lock, with each scheduler awaiting its own write |
-| Tracking "time sync once per 24 h" | Sending the time frame on every finite-validity write |
+| Time sync (`0x23`) entirely | Not needed, because validity is relative to the device's own clock (source check, 2026-10-02). `build_time_frame` stays in `protocol.py` as the H6 fallback. |
 
 Kept at the user's request: the "If HA stops" option, per-screen "show immediately on big
 change", the duplicate-marker warning, both Repairs triggers (5 failures or 1 h), and the
