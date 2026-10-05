@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-05
+
+### Fixed
+
+- Switching the mode while a write was in progress took effect only after a full screen time (up to 15 minutes). In that time a screen sent in *Single screen + built-in* mode kept alternating with the temperature after switching to *Rotating screens*. The change now applies at the next allowed write.
+
+### Changed
+
+- *If Home Assistant stops → Alternate* is now called *Always alternate with the built-in reading*, and its help says that the LCD then switches between your screen and its own reading every few seconds all the time, not only when Home Assistant stops. Choose *Freeze the last screen* for steady screens.
+- The **Display** sensor has an `alternating` attribute: `true` when the last frame makes the thermometer take turns with its own reading.
+- README: what to check when the LCD switches between your value and the temperature. Presence and motion sensors don't cause it.
+
 ## [0.3.0] - 2026-10-03
 
 ### Changed

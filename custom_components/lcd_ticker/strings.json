@@ -58,7 +58,7 @@
             },
             "data_description": {
               "profile": "Choosing Eco, Balanced or Responsive sets both speeds. Editing a speed switches to Custom.",
-              "mode": "Single screen + built-in: the thermometer alternates your first screen with its own reading at no extra cost. Rotating: LCD Ticker switches between your screens."
+              "mode": "Single screen + built-in: the thermometer switches between your first screen and its own reading every few seconds, at no extra cost. Rotating: LCD Ticker switches between your screens, and each one stays steady unless Safety is set to Alternate."
             }
           },
           "presence": {
@@ -89,7 +89,7 @@
               "on_ha_stop": "If Home Assistant stops"
             },
             "data_description": {
-              "on_ha_stop": "Rotating mode only. Freeze keeps the last screen until Home Assistant is back. Alternate shows each screen alternating with the built-in reading and falls back to the built-in reading if Home Assistant stops."
+              "on_ha_stop": "Rotating mode only. Freeze: each screen stays steady, and if Home Assistant stops the last one stays. Alternate: all the time, the thermometer switches between your screen and its own reading every few seconds, so if Home Assistant stops only its own reading is left."
             }
           }
         }
@@ -226,7 +226,7 @@
     "on_ha_stop": {
       "options": {
         "freeze": "Freeze the last screen",
-        "alternate": "Alternate with the built-in reading"
+        "alternate": "Always alternate with the built-in reading"
       }
     },
     "convert": {

@@ -716,6 +716,35 @@ async def test_apply_options_mode_change_writes_after_delay(
     assert decode(writer.writes[-1])[2] == 1800
 
 
+async def test_apply_options_mode_change_during_write_is_not_lost(
+    hass, freezer, writer, run
+) -> None:
+    """Switching to rotating while a single-mode write is in flight applies soon."""
+    set_value(hass, "sensor.a", "1")
+    release = asyncio.Event()
+    record = writer.async_write
+
+    async def slow_write(address: str, frames: Any) -> None:
+        await release.wait()
+        await record(address, frames)
+
+    writer.async_write = slow_write
+    scheduler = await run(
+        {CONF_MODE: MODE_SINGLE}, (screen("sensor.a"),), first_tick=False
+    )
+    freezer.tick(RELOAD_DELAY)
+    async_fire_time_changed(hass)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert scheduler._lock.locked()  # the first write is in flight
+    scheduler.apply_options({**scheduler.entry.options, CONF_MODE: "rotating"})
+    release.set()
+    await hass.async_block_till_done()
+    assert [decode(w)[2] for w in writer.writes] == [1800]
+    await advance(hass, freezer, MIN_WRITE_GAP)
+    assert [decode(w)[2] for w in writer.writes] == [1800, VALIDITY_PERMANENT]
+
+
 async def test_apply_options_enabling_resumes(hass, freezer, writer, run) -> None:
     set_value(hass, "sensor.a", "1")
     options = {CONF_ENABLED: False, CONF_INACTIVE_DISPLAY: INACTIVE_LEAVE}

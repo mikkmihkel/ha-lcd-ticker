@@ -297,6 +297,7 @@ async def test_display_sensor(
     assert state.attributes["percent"] is False
     assert state.attributes["battery"] is False
     assert state.attributes["validity"] == 65535
+    assert state.attributes["alternating"] is False
 
     hass.states.async_set("sensor.power", "250.4", {"unit_of_measurement": "kW"})
     await hass.services.async_call(
@@ -322,6 +323,10 @@ async def test_display_sensor_builtin(
     await hass.async_block_till_done()
     assert hass.states.get(eid).state == "built-in reading"
     assert hass.states.get(eid).attributes["screen"] is None  # not a screen's frame
+    assert hass.states.get(eid).attributes["alternating"] is False
+    await scheduler._async_write_frame(None, DisplayFrame(validity=1800), True)
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).attributes["alternating"] is True
 
 
 def test_display_sensor_shows_the_small_number_clamped_like_the_lcd() -> None:

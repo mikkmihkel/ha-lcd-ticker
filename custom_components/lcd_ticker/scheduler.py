@@ -835,7 +835,10 @@ class Scheduler:
         else:
             self._index = self._slots.index(current) if current in self._slots else -1
         changed = self._check_activity(now)
-        if self._active and not changed and self._tick_due is not None:
+        # While a write is in flight no tick is pending; schedule one anyway so
+        # the write does not schedule the next tick with the old dwell.
+        pending = self._tick_due is not None or (self._ready and self._lock.locked())
+        if self._active and not changed and pending:
             if mode_changed:
                 due = max(
                     now + datetime.timedelta(seconds=RELOAD_DELAY),

@@ -49,7 +49,7 @@ Each screen's setup shows a **live preview** of what the LCD will display, inclu
 
 Each thermometer has one of two modes:
 - **Single screen + built-in reading.** The thermometer alternates your value with its own temperature and humidity. This costs no extra battery.
-- **Rotating screens.** LCD Ticker cycles through your screens. You can add the thermometer's own reading as one of them.
+- **Rotating screens.** LCD Ticker cycles through your screens, and each one stays steady on the LCD. You can add the thermometer's own reading as one of them. Only if you set *If Home Assistant stops* to *Always alternate* does every screen switch with the built-in reading every few seconds.
 
 Every change on the LCD is one short Bluetooth connection. To keep the battery steady:
 - A screen is written only when what it shows actually changes.
@@ -112,7 +112,7 @@ Afterwards the thermometer is named `ATC_` plus six characters of its MAC. Some 
 ## Troubleshooting
 
 - **"Could not reach the thermometer"**: move it closer to the Bluetooth adapter or proxy, and check that the adapter supports connections, not just scanning.
-- **It alternates with temperature/humidity**: that's normal in *Single screen + built-in* mode and with *If HA stops → Alternate*. The pvvx settings `show_batt_enabled` and `show_time_smile` can add battery or clock steps.
+- **Your value and the temperature take turns every 5 to 10 seconds**: the thermometer does this itself whenever a frame has a time limit. Look at the **Display** sensor: `alternating: true` means that is the case. It is expected in *Single screen + built-in* mode and with *If Home Assistant stops → Always alternate*. For a steady screen, use *Rotating screens* with *Freeze the last screen*. If `alternating` is `false` and it still switches, something else is writing to the thermometer, such as an old automation calling `lcd_ticker.show` or `pvvx_display.show` (their default validity is 900 s, which alternates). Presence and motion sensors only change how fast screens rotate; they never cause this. The pvvx settings `show_batt_enabled` and `show_time_smile` can add battery or clock steps.
 - **Shows 1999 or -99**: the value is beyond what the LCD can show. Check the screen's conversion and multiplier.
 - **Battery level**: the **Battery** sensor on the LCD Ticker device (from the thermometer's own broadcasts; encrypted BTHome isn't supported).
 - **Deleting your last screen**: turn **Rotation** off first, or the LCD keeps the last value.

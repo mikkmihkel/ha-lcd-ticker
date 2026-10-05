@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import VALIDITY_BUILTIN, signal_readings
+from .const import VALIDITY_BUILTIN, VALIDITY_PERMANENT, signal_readings
 from .entity import LcdTickerEntity
 from .models import LcdTickerConfigEntry
 from .protocol import encode_big, encode_small
@@ -119,6 +119,9 @@ class DisplaySensor(LcdTickerEntity, SensorEntity):
             "percent": frame.percent,
             "battery": frame.battery,
             "validity": frame.validity,
+            # Any finite validity makes the firmware switch to its own reading
+            # every few seconds.
+            "alternating": frame.validity not in (VALIDITY_BUILTIN, VALIDITY_PERMANENT),
         }
 
 
