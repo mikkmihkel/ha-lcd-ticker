@@ -1,5 +1,5 @@
 # Exact pins, checked 2026-10-02. Dependabot proposes updates.
-pytest-homeassistant-custom-component==0.13.367
+pytest-homeassistant-custom-component==0.13.368
 ruff==0.16.10
 pytest-cov==7.1.0
 # Imported by HA's usb component (a bluetooth dependency); not pulled in on Linux otherwise.
